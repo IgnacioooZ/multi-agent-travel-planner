@@ -4,6 +4,8 @@
 
 **小组协作约定：所有人使用同一个仓库的 `main` 主分支，按顺序接力；同一时间只有一位同学提交修改。** 不需要创建功能分支或发起 PR。`main` 是 Git 的默认分支名，即使不分支协作也会存在。
 
+仓库地址：https://github.com/IgnacioooZ/multi-agent-travel-planner · [待办任务](https://github.com/IgnacioooZ/multi-agent-travel-planner/issues) · [当前交接](HANDOFF.md)
+
 ## 1. 第一次加入：获取代码并运行
 
 1. 仓库负责人在 GitHub 的 **Settings → Collaborators → Add people** 中输入同学的 GitHub 用户名，核对账号后发出邀请。同学接受后才能访问私有仓库并上传修改。只有仓库链接不等于获得权限。

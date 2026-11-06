@@ -12,6 +12,8 @@
 
 ## T1：下一位同学从零恢复并确认可运行
 
+GitHub Issue：[T1 环境验收](https://github.com/IgnacioooZ/multi-agent-travel-planner/issues/1)
+
 - 状态：待认领；负责人：待填写；截止时间：待填写。
 - 目标：用自己的 GitHub 账号接受邀请，克隆仓库，按 README 安装依赖与数据。
 - 验收：记录 Python 版本、`doctor`、`smoke`、`pytest` 结果；阅读三个角色如何传递信息。
