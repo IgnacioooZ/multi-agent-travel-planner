@@ -1,0 +1,37 @@
+{
+  "code_commit": "f445e0011f42594fcc29b8c752ece06ded9a8218",
+  "sources": {
+    "LAMDA-NeSy/ChinaTravel-Sandbox": {
+      "revision": "885c7dad143bf040238ddca263f4788d582ee0f4",
+      "files": {
+        "raw/ChinaTravel_sandbox_zh.zip": {
+          "sha256": "42d95ff7b8f96574d0ee972ca77599258e4854a219617868caeb462b79c715bd",
+          "bytes": 1027737
+        }
+      }
+    },
+    "LAMDA-NeSy/ChinaTravel": {
+      "revision": "a7d893afb628af6ca181625b6c7cca2d60a6bccb",
+      "files": {
+        "easy.csv": {
+          "sha256": "cb0b7940defa8a9b260bac12bee3fb3254678883b40371c3ca8f33c5f37153e3",
+          "bytes": 353344
+        },
+        "medium.csv": {
+          "sha256": "9cd49188a8f2a01b900abecc3f10263c257bcb761cf2635e5f0d4fb53d93f77b",
+          "bytes": 275424
+        },
+        "human.csv": {
+          "sha256": "2f0d61e37665a345bd428732ace6e1ce9d6de2af8d292047bcf5cc1c4f9cfc78",
+          "bytes": 171906
+        }
+      }
+    }
+  },
+  "task_counts": {
+    "easy": 300,
+    "medium": 150,
+    "human": 154
+  },
+  "sandbox_csv_count": 30
+}

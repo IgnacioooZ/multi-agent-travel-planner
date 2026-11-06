@@ -1,0 +1,8 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {"label": "ChinaTravel: MCP 独立验收", "type": "process", "command": "${workspaceFolder}/.venv/Scripts/python.exe", "args": ["-m", "lab.cli", "mcp-check"], "options": {"cwd": "${workspaceFolder}", "env": {"PYTHONUTF8": "1"}}, "problemMatcher": []},
+    {"label": "ChinaTravel: 无费用自检", "type": "process", "command": "${workspaceFolder}/.venv/Scripts/python.exe", "args": ["-m", "lab.cli", "smoke"], "options": {"cwd": "${workspaceFolder}", "env": {"PYTHONUTF8": "1"}}, "problemMatcher": []},
+    {"label": "ChinaTravel: 运行测试", "type": "process", "command": "${workspaceFolder}/.venv/Scripts/python.exe", "args": ["-m", "pytest", "-q"], "options": {"cwd": "${workspaceFolder}"}, "problemMatcher": [], "group": "test"}
+  ]
+}

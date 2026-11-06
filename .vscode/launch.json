@@ -1,0 +1,12 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {"name": "MCP 课程：查看景点工具 schema", "type": "debugpy", "request": "launch", "module": "lab.cli", "args": ["tools", "--name", "attractions_select"], "console": "integratedTerminal", "cwd": "${workspaceFolder}"},
+    {"name": "MCP 课程：手动查询杭州景点", "type": "debugpy", "request": "launch", "module": "lab.cli", "args": ["call", "attractions_select", "--args-file", "examples/mcp/attractions.json"], "console": "integratedTerminal", "cwd": "${workspaceFolder}"},
+    {"name": "MCP 课程：协议验收（无需密钥）", "type": "debugpy", "request": "launch", "module": "lab.cli", "args": ["mcp-check"], "console": "integratedTerminal", "cwd": "${workspaceFolder}"},
+    {"name": "1. 查看第一条任务（无费用）", "type": "debugpy", "request": "launch", "module": "lab.cli", "args": ["inspect"], "console": "integratedTerminal", "cwd": "${workspaceFolder}"},
+    {"name": "2. 数据/MCP/评分器自检（无费用）", "type": "debugpy", "request": "launch", "module": "lab.cli", "args": ["smoke"], "console": "integratedTerminal", "cwd": "${workspaceFolder}"},
+    {"name": "3. 单智能体（需要密钥，会产生 API 费用）", "type": "debugpy", "request": "launch", "module": "lab.cli", "args": ["run", "--mode", "single", "--limit", "1"], "console": "integratedTerminal", "cwd": "${workspaceFolder}", "envFile": "${workspaceFolder}/.env"},
+    {"name": "4. 多智能体 + MCP（需要密钥，会产生 API 费用）", "type": "debugpy", "request": "launch", "module": "lab.cli", "args": ["run", "--mode", "multi", "--transport", "mcp", "--limit", "1"], "console": "integratedTerminal", "cwd": "${workspaceFolder}", "envFile": "${workspaceFolder}/.env"}
+  ]
+}

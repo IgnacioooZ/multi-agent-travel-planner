@@ -1,0 +1,16 @@
+{
+  "python.defaultInterpreterPath": "${workspaceFolder}/.venv/Scripts/python.exe",
+  "python.terminal.activateEnvironment": true,
+  "python.analysis.extraPaths": ["${workspaceFolder}/vendor/ChinaTravel"],
+  "python.testing.pytestEnabled": true,
+  "python.testing.unittestEnabled": false,
+  "python.testing.pytestArgs": ["tests"],
+  "files.exclude": {"**/__pycache__": true, ".pytest_cache": true},
+  "search.exclude": {
+    ".venv": true,
+    "vendor": true,
+    "data": true,
+    "runs": true
+  },
+  "python.terminal.useEnvFile": true
+}
