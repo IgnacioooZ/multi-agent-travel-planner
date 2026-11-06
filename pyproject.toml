@@ -1,0 +1,18 @@
+[project]
+name = "chinatravel-lab"
+version = "0.1.0"
+description = "A small, readable multi-agent learning project on the official ChinaTravel benchmark"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "geopy==2.4.1", "numpy==1.26.4", "pandas==2.2.3", "jsonschema==4.23.0",
+  "tqdm==4.66.6", "openai>=1.66.0", "json-repair==0.30.0",
+  "scikit-learn==1.5.2", "fuzzywuzzy==0.18.0", "func-timeout==4.3.5",
+  "datasets==3.3.2", "python-dotenv>=1,<2", "mcp>=1.20,<2"
+]
+
+[dependency-groups]
+dev = ["pytest>=8,<10"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
