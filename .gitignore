@@ -1,0 +1,22 @@
+# Local credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Reproducible local environment and generated output
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+vendor/
+data/*
+!data/splits.json
+runs/
+build/
+dist/
+.DS_Store
+Thumbs.db
+
