@@ -31,7 +31,7 @@ class ScriptedModel:
             self.used_tool = True
             calls = [{"id": "test-call", "type": "function", "function": {"name": "attractions_keys", "arguments": '{"city":"杭州"}'}}]
         if "整合全部候选" in messages[0]["content"]:
-            value = {"people_number": 1, "start_city": "上海", "target_city": "杭州", "itinerary": []}
+            value = {"people_number": 1, "start_city": "上海", "target_city": "杭州", "itinerary": [{"day": 1, "activities": [{"type": "attraction", "position": "西湖", "start_time": "09:00", "end_time": "10:00", "price": 0, "cost": 0, "tickets": 1, "transports": []}]}]}
         else:
             value = {"candidates": [], "unresolved": ["scripted test only"]}
         return {"content": json.dumps(value, ensure_ascii=False), "tool_calls": calls, "input_tokens": 10, "output_tokens": 5, "served_model": "test-double", "finish_reason": "stop"}

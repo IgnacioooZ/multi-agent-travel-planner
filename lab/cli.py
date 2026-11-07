@@ -8,6 +8,7 @@ import time
 from pathlib import Path
 from dataclasses import asdict
 from datetime import datetime
+from uuid import uuid4
 
 from lab.agent import DeepSeekModel, Trace, Usage
 from lab.benchmark import load_tasks, select_tasks
@@ -49,53 +50,106 @@ async def smoke():
 
 
 async def run(args):
+    """整批运行：准备实验 → 逐个执行任务 → 汇总资源用量。"""
     settings = Settings.from_env()
+    if args.max_total_tokens is not None:
+        if args.max_total_tokens < 1:
+            raise ValueError("--max-total-tokens must be positive")
+        settings.max_total_tokens = args.max_total_tokens
     if args.max_model_calls is not None:
         if args.max_model_calls < 1:
             raise ValueError("--max-model-calls must be positive")
         settings.max_model_calls = args.max_model_calls
-    api_key()  # Fail before creating incomplete result folders if no key is configured.
     tasks = select_tasks(args.split, args.limit, args.uid, args.subset)
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
-    run_dir = RUNS / f"{stamp}-{args.mode}"
-    write_json(run_dir / "run.json", {"mode": args.mode, "split": args.split, "subset": args.subset if not args.uid else "explicit_uid", "task_ids": [t["uid"] for t in tasks], "transport": args.transport, "settings": settings.public_dict(), "benchmark": read_json(DATA / "manifest.json"), "measured": True})
+    # Windows 时钟可能让并发进程取得相同时间戳；划分和随机后缀避免目录重合。
+    run_dir = RUNS / f"{stamp}-{args.split}-{args.mode}-{uuid4().hex[:8]}"
+    # 构造客户端时会检查密钥；无需在 run() 中重复读取，且先于结果文件写入。
     model = DeepSeekModel(settings)
     statuses = []
     try:
+        write_json(run_dir / "run.json", {
+            "mode": args.mode,
+            "split": args.split,
+            "subset": "explicit_uid" if args.uid else args.subset,
+            "task_ids": [task["uid"] for task in tasks],
+            "transport": args.transport,
+            "settings": settings.public_dict(),
+            "benchmark": read_json(DATA / "manifest.json"),
+            "measured": True,
+        })
         for task in tasks:
-            task_dir = run_dir / task["uid"]
-            trace = Trace(task_dir / "trace.jsonl")
-            usage = Usage()
-            write_json(task_dir / "task.json", task)
-            start = time.perf_counter()
-            status = "completed"
-            failure = None
-            try:
-                async with connect_tools(args.transport) as tools:
-                    plan = await solve(task, args.mode, model, tools, settings, usage, trace)
-                write_json(task_dir / "plan.json", plan)
-            except Exception as exc:
-                # Never dump request headers or credentials into an error report.
-                status, failure = "failed", type(exc).__name__
-                trace.log("run_failed", error_type=failure)
-                print(f"{task['uid']}: failed ({failure}); inspect trace.jsonl / model configuration", file=sys.stderr)
-            metrics = {"status": status, "error_type": failure, "latency_seconds": time.perf_counter() - start, **asdict(usage)}
-            write_json(task_dir / "metrics.json", metrics)
-            statuses.append({"uid": task["uid"], **metrics})
-            print(f"{task['uid']}: {status}, model_calls={usage.model_calls}, tool_calls={usage.tool_calls}", flush=True)
+            result = await run_task(task, args, model, settings, run_dir)
+            statuses.append(result)
     finally:
         await model.close()
-    write_json(run_dir / "metrics_summary.json", {"tasks": len(tasks), "completed": sum(r["status"] == "completed" for r in statuses), "input_tokens": sum(r["input_tokens"] for r in statuses), "output_tokens": sum(r["output_tokens"] for r in statuses), "model_calls": sum(r["model_calls"] for r in statuses), "tool_calls": sum(r["tool_calls"] for r in statuses), "runs": statuses})
+
+    write_json(run_dir / "metrics_summary.json", {
+        "tasks": len(tasks),
+        "completed": sum(row["status"] == "completed" for row in statuses),
+        "input_tokens": sum(row["input_tokens"] for row in statuses),
+        "output_tokens": sum(row["output_tokens"] for row in statuses),
+        "model_calls": sum(row["model_calls"] for row in statuses),
+        "tool_calls": sum(row["tool_calls"] for row in statuses),
+        "grounding_queries": sum(row["grounding_queries"] for row in statuses),
+        "runs": statuses,
+    })
     print(f"Results: {run_dir}")
     print(f'评分: .venv\\Scripts\\python.exe -m lab.evaluate "{run_dir}"')
     if any(r["status"] == "failed" for r in statuses):
         raise RuntimeError("One or more tasks failed; failures are retained for evaluation")
 
 
-def main():
-    for stream in (sys.stdout, sys.stderr):
-        if hasattr(stream, "reconfigure"):
-            stream.reconfigure(encoding="utf-8")
+async def run_task(task, args, model, settings, run_dir):
+    """一个任务：连接工具 → solve → 保存计划和指标；失败任务也保留记录。"""
+    task_dir = run_dir / task["uid"]
+    trace = Trace(task_dir / "trace.jsonl")
+    usage = Usage()
+    write_json(task_dir / "task.json", task)
+    start = time.perf_counter()
+    status = "completed"
+    failure = None
+    root_error_types = []
+
+    try:
+        async with connect_tools(args.transport) as tools:
+            plan = await solve(task, args.mode, model, tools, settings, usage, trace)
+        write_json(task_dir / "plan.json", plan)
+    except Exception as exc:
+        # 批量评测必须保留失败任务；只记录异常类型，避免泄露请求中的凭据。
+        status = "failed"
+        failure = type(exc).__name__
+        root_error_types = exception_types(exc)
+        trace.log("run_failed", error_type=failure, root_error_types=root_error_types)
+        print(
+            f"{task['uid']}: failed ({failure}); inspect trace.jsonl / model configuration",
+            file=sys.stderr,
+        )
+
+    metrics = {
+        "status": status,
+        "error_type": failure,
+        "root_error_types": root_error_types,
+        "latency_seconds": time.perf_counter() - start,
+        **asdict(usage),
+    }
+    write_json(task_dir / "metrics.json", metrics)
+    print(
+        f"{task['uid']}: {status}, model_calls={usage.model_calls}, tool_calls={usage.tool_calls}",
+        flush=True,
+    )
+    return {"uid": task["uid"], **metrics}
+
+
+def exception_types(exc):
+    """MCP 上下文会包装异常；只记录内部类型，避免写入可能含凭据的异常正文。"""
+    if isinstance(exc, BaseExceptionGroup):
+        return sorted({name for child in exc.exceptions for name in exception_types(child)})
+    return [type(exc).__name__]
+
+
+def build_parser():
+    """声明命令和参数；这里不执行任何命令。"""
     parser = argparse.ArgumentParser(description="ChinaTravel 学习项目：数据、工具、单/多智能体与评测")
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("doctor", help="检查环境和密钥是否存在（不显示密钥）")
@@ -122,15 +176,71 @@ def main():
     runner.add_argument("--limit", type=int, default=1)
     runner.add_argument("--uid")
     runner.add_argument("--max-model-calls", type=int)
-    args = parser.parse_args()
+    runner.add_argument("--max-total-tokens", type=int, help="可选累计 token 阈值；默认不限制累计用量")
+    return parser
+
+
+def doctor():
+    settings = Settings.from_env()
+    try:
+        api_key()
+        configured = True
+    except RuntimeError:
+        configured = False
+    report = {
+        "python": sys.version.split()[0],
+        "project": str(ROOT),
+        "data_ready": (DATA / "manifest.json").exists(),
+        "model": settings.model,
+        "base_url": settings.base_url,
+        "api_key_configured": configured,
+    }
+    print(json.dumps(report, ensure_ascii=False, indent=2))
+
+
+async def show_tools(args):
+    async with connect_tools(args.transport) as tools:
+        specs = await tools.list_tools()
+
+    if args.name:
+        for spec in specs:
+            if spec["function"]["name"] == args.name:
+                print(json.dumps(spec, ensure_ascii=False, indent=2))
+                return
+        raise ValueError(f"Unknown tool: {args.name}")
+    if args.json:
+        print(json.dumps(specs, ensure_ascii=False, indent=2))
+        return
+    for spec in specs:
+        function = spec["function"]
+        print(f"{function['name']}: {function['description']}")
+
+
+async def call_one(args):
+    argument_text = (
+        args.args_file.read_text(encoding="utf-8-sig")
+        if args.args_file else (args.args or "{}")
+    )
+    payload = json.loads(argument_text)
+    if not isinstance(payload, dict):
+        raise ValueError("工具参数必须是 JSON 对象")
+
+    async with connect_tools(args.transport) as tools:
+        result = await tools.call(args.name, payload)
+    print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
+    if not result.get("success"):
+        raise SystemExit(1)
+
+
+def main():
+    """只执行用户选择的一个命令；这些分支不是先后步骤。"""
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8")
+    args = build_parser().parse_args()
+
     if args.command == "doctor":
-        settings = Settings.from_env()
-        try:
-            api_key()
-            configured = True
-        except RuntimeError:
-            configured = False
-        print(json.dumps({"python": sys.version.split()[0], "project": str(ROOT), "data_ready": (DATA / "manifest.json").exists(), "model": settings.model, "base_url": settings.base_url, "api_key_configured": configured}, ensure_ascii=False, indent=2))
+        doctor()
     elif args.command == "inspect":
         print(json.dumps(load_tasks(args.split)[:args.limit], ensure_ascii=False, indent=2))
     elif args.command == "smoke":
@@ -139,33 +249,9 @@ def main():
         from lab.mcp_check import check_mcp
         asyncio.run(check_mcp())
     elif args.command == "tools":
-        async def show_tools():
-            async with connect_tools(args.transport) as tools:
-                specs = await tools.list_tools()
-                if args.name:
-                    selected = [t for t in specs if t["function"]["name"] == args.name]
-                    if not selected:
-                        raise ValueError(f"Unknown tool: {args.name}")
-                    print(json.dumps(selected[0], ensure_ascii=False, indent=2))
-                    return
-                if args.json:
-                    print(json.dumps(specs, ensure_ascii=False, indent=2))
-                    return
-                for spec in specs:
-                    f = spec["function"]
-                    print(f"{f['name']}: {f['description']}")
-        asyncio.run(show_tools())
+        asyncio.run(show_tools(args))
     elif args.command == "call":
-        payload = json.loads(args.args_file.read_text(encoding="utf-8-sig") if args.args_file else (args.args or "{}"))
-        if not isinstance(payload, dict):
-            raise ValueError("工具参数必须是 JSON 对象")
-        async def call_one():
-            async with connect_tools(args.transport) as tools:
-                result = await tools.call(args.name, payload)
-                print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
-                return result
-        if not asyncio.run(call_one()).get("success"):
-            raise SystemExit(1)
+        asyncio.run(call_one(args))
     else:
         asyncio.run(run(args))
 

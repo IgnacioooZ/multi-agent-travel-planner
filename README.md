@@ -1,206 +1,171 @@
-# Travel Planner 多智能体小组项目
+# Travel Planner
 
-基于 ChinaTravel 的旅行规划项目。当前已有交通与住宿、景点与餐饮、行程整合三个角色，使用 MCP 查询官方沙盒，并由独立评分器评估行程。
+基于 ChinaTravel benchmark 的旅行规划系统，使用 DeepSeek、MCP 和官方沙盒工具生成行程，支持单智能体与三个角色协作，并由独立评分器评估。
 
-**小组协作约定：所有人使用同一个仓库的 `main` 主分支，按顺序接力；同一时间只有一位同学提交修改。** 不需要创建功能分支或发起 PR。`main` 是 Git 的默认分支名，即使不分支协作也会存在。
+## 1. 功能与模块
 
-仓库地址：https://github.com/IgnacioooZ/multi-agent-travel-planner · [待办任务](https://github.com/IgnacioooZ/multi-agent-travel-planner/issues) · [当前交接](HANDOFF.md)
+### Benchmark 与数据
 
-## 1. 第一次加入：获取代码并运行
+- [ChinaTravel](https://github.com/LAMDA-NeSy/ChinaTravel)：easy 300、medium 150、human 154，共 604 条中文旅行任务。
+- Agent 只接收公开的 `uid` 和 `request`；隐藏约束仅由离线评分器使用。
+- `data/splits.json` 固定 easy 的本地开发集 10 条、留出集 20 条，属于项目划分，不是官方排行榜划分。
+- `scripts/bootstrap.py` 恢复固定版本代码与数据；`benchmark.lock.json`、`uv.lock` 和 `data/manifest.json` 记录版本、依赖与数据来源。
 
-1. 仓库负责人在 GitHub 的 **Settings → Collaborators → Add people** 中输入同学的 GitHub 用户名，核对账号后发出邀请。同学接受后才能访问私有仓库并上传修改。只有仓库链接不等于获得权限。
-2. 在仓库首页点击 **Code → HTTPS**，复制地址。在 VS Code 按 `Ctrl+Shift+P`，选择 **Git: Clone**，粘贴地址并选择保存位置，然后打开克隆出的项目文件夹。不要把项目克隆到现有项目里面。
-3. 首次在自己的电脑安装 [Git](https://git-scm.com/downloads)、[VS Code](https://code.visualstudio.com/) 和 [uv](https://docs.astral.sh/uv/getting-started/installation/)。VS Code 建议安装 Microsoft 发布的 Python、Python Debugger 扩展。
-4. 在 VS Code 的“终端 → 新建终端”中执行下面的 PowerShell 命令。终端当前目录必须是包含本 README 的项目根目录。
+### CLI 与模型客户端
+
+- `lab/cli.py`：选择任务、单/多智能体运行、手动查询工具与保存结果。`main()` 选择命令，`run()` 管理批次，`run_task()` 执行任务。
+- `lab/agent.py`：DeepSeek 客户端、Tool Calling 循环、调用计数与日志。
+- 默认模型 `deepseek-chat`。本地不设累计 token 或上下文字符数上限；单次输出自动读取服务公布的最大长度，服务自身的容量边界仍然存在。
+- 每条任务共享最多 24 次模型请求、60 次工具调用；连接异常最多显式重试一次，计入请求数。
+
+### Agent 角色
+
+角色定义与调度位于 `lab/workflow.py`。当前通过 Python 按顺序交接回答及工具证据，各角色拥有自己的消息历史。
+
+- **Logistics**：交通与住宿研究；使用 `accommodations_*`、`intercity_transport_select`、`poi_lat_lon_search`、`goto`、`next_page`，最多 6 次模型请求。
+- **Activities**：景点与餐饮研究；使用 `attractions_*`、`restaurants_*`、`poi_lat_lon_search`、`goto`、`next_page`，最多 6 次模型请求。
+- **Planner**：整合需求与研究结果；使用全部工具，最多 12 次模型请求，最后四轮进入提交阶段。
+- **single 模式**：跳过研究角色，由 Planner 提示词和全部工具直接完成任务，最多 24 次模型请求。
+
+角色共用当前任务的模型客户端、工具会话与用量计数。推理通过 DeepSeek API 完成，本地运行 Python 和沙盒，不需要独立 GPU。
+
+### MCP 与工具
+
+- **MCP Client**：`lab/tools.py` 中的 `MCPTools`，初始化会话、发现工具并发送调用请求。
+- **MCP Server**：`lab/mcp_server.py`，通过本地 stdio 子进程提供工具，任务运行时自动启动并清理。
+- **Direct**：同文件的 `DirectTools`，直接调用相同沙盒，供调试与对照。
+
+共 19 个工具：18 个官方查询工具及 1 个本地提交工具。
+
+- 景点：`attractions_keys`、`attractions_select`、`attractions_id_is_open`、`attractions_nearby`、`attractions_types`。
+- 住宿：`accommodations_keys`、`accommodations_select`、`accommodations_nearby`。
+- 餐饮：`restaurants_keys`、`restaurants_select`、`restaurants_id_is_open`、`restaurants_nearby`、`restaurants_with_recommended_food`、`restaurants_cuisine`。
+- 交通与辅助：`intercity_transport_select`、`goto`、`poi_lat_lon_search`、`next_page`。
+- 提交：`finalize_plan`，实现位于 `lab/plan_tool.py`。模型选择实体、班次、时段和交通方式；工具从公开沙盒生成真实价格、数量费用、路线及衔接时间，返回修改记录和冲突信息。成功结果直接保存，避免模型再次复制事实字段。
+
+工具查询 benchmark 沙盒，不执行真实订票或付款；隐藏任务查询和通用环境命令不对 Agent 开放。
+
+### 校验、评分与运行记录
+
+- `lab/validation.py`：公开 schema、费用、时间、路线及部分工具证据一致性检查，不读取隐藏标注。
+- 提交工具绑定原始公开请求，检查能明确识别的天数与预算；尚非完整中文约束解析器。
+- `lab/evaluate.py`：独立调用官方逐任务评分函数，检查 schema、常识约束、硬约束及联合通过情况；未接入偏好指标。缺失输出保留在分母，执行完成不等于评分通过。
+- `scripts/apply_upstream_fixes.py`：统一官方交通评分器的一处错误列名，bootstrap 自动应用；已有环境可单独运行该脚本。评分记录补丁状态、源码哈希与异常数。
+- `runs/`：保存计划、逐步模型/工具日志、输入输出 tokens、耗时、调用次数和评分。`grounding_queries` 单独统计提交工具内部的逻辑事实读取（含缓存复用），不等于额外模型调用。
+
+## 2. 安装与运行
+
+### 2.1 安装环境并恢复数据
+
+准备 Git、uv 和 Python 3.12。以下为 Windows PowerShell 命令；仓库访问权限需提前开通。
 
 ```powershell
-git config user.name "你的名字"
-git config user.email "你的 GitHub 提交邮箱"
+git clone https://github.com/IgnacioooZ/multi-agent-travel-planner.git
+cd multi-agent-travel-planner
 uv python install 3.12
 uv sync --frozen
 .venv\Scripts\python.exe scripts/bootstrap.py
 if (!(Test-Path .env)) { Copy-Item .env.example .env }
-.venv\Scripts\python.exe -m lab.cli doctor
-.venv\Scripts\python.exe -m lab.cli smoke
-.venv\Scripts\python.exe -m pytest -q
 ```
 
-`git config` 只配置本仓库的提交署名。邮箱可以使用 GitHub **Settings → Emails** 中自己的 noreply 邮箱。署名不等于登录；首次推送若需要登录，请在 Git/VS Code 打开的正规 GitHub 登录流程中自行完成。
+已有项目直接在项目根目录执行安装步骤，不要重复克隆。首次恢复需要访问 GitHub 和 Hugging Face；已恢复的数据可用于离线工具查询和评分。macOS/Linux 将 Python 路径替换为 `.venv/bin/python`，并使用对应 shell 的复制命令；当前本地验收环境为 Windows。
 
-下载代码不包括 `.venv`、`.env`、上游代码、完整数据和本地运行日志；这些由安装和 bootstrap 步骤恢复。`uv.lock` 锁定 Python 依赖，`benchmark.lock.json` 锁定官方代码与数据版本，`data/splits.json` 固定小组实验划分。首次恢复需要能访问 GitHub 和 Hugging Face。
-
-`doctor` 不会展示密钥。`smoke` 和 `pytest` 不调用付费模型。只有需要真实模型运行时，才在本地 `.env` 中填写自己的 `DEEPSEEK_API_KEY`；不要把密钥粘贴进 README、Issues 或聊天记录。
-
-macOS/Linux 同学把 `.venv\Scripts\python.exe` 替换为 `.venv/bin/python`，复制配置使用 `cp .env.example .env`（仅在 `.env` 尚不存在时）。现有 VS Code 调试配置以 Windows 为主。
-
-## 2. 每次接手：先确认轮到自己，再更新
-
-先在组内确认上一位已经推送成功、当前由你负责，并阅读 [交接记录](HANDOFF.md) 与 [任务清单](TASKS.md)。同一时间只有当前负责人修改、提交共享项目，避免轮流协作变成同时改同一个版本。
-
-```powershell
-git status
-git branch --show-current
-git pull --ff-only origin main
-```
-
-开始时应在 `main`，且 `git status` 显示工作区干净。若有上次未提交的修改，先检查并保存/提交，不要覆盖或删除。`--ff-only` 会在本地与远端历史分叉时停止；遇到失败先和上一位确认，不要使用强制推送或强制重置。
-
-如果上一位更新了依赖，重新执行 `uv sync --frozen`；如果更新了数据恢复流程，按交接说明运行 bootstrap。不要在每次接手时覆盖自己已有的 `.env`。
-
-## 3. 完成修改：测试、提交、上传，再交接
-
-只做当前认领的任务。改完运行与改动相关的检查，至少运行现有测试：
-
-```powershell
-.venv\Scripts\python.exe -m pytest -q
-# 修改工具、MCP 或评测链路时，额外运行：
-.venv\Scripts\python.exe -m lab.cli smoke
-```
-
-更新 `TASKS.md` 中该任务的状态；在 `HANDOFF.md` 顶部填写完成内容、测试结果、已知问题和下一步。新增命令、配置或依赖时也更新 README。然后执行：
-
-```powershell
-git status
-git diff
-git add .
-git diff --cached --stat
-git diff --cached
-git commit -m "feat: 简要说明本次完成的内容"
-git push origin main
-git status
-git log -1 --oneline
-```
-
-`commit` 只保存到本机；只有 `push` 成功，下一位才能收到修改。上传前检查暂存内容，确认没有密钥、个人数据或不相关文件。`git status` 应显示工作区干净，若配置了上游，还应显示与 `origin/main` 同步。刷新 GitHub 首页，核对最新提交与刚才的 `git log` 一致，再通知下一位接手。
-
-交接消息示例（手动发送到你们的小组群）：
-
-> 本轮任务 T2 已完成并推送到 main，提交：abc1234。测试结果见 HANDOFF.md；下一位请先 pull，再接 T3。已知问题：……
-
-若 `push` 被拒绝，说明远端已有新提交。先联系上一位、检查 `git status`，确认工作区已保存后尝试 `git pull --ff-only origin main`。若提示历史分叉，保留现状一起处理，**不要 `push --force` 或 `reset --hard`**。
-
-VS Code 的界面方式：左侧“源代码管理”查看修改 → 暂存修改 → 输入说明并提交 → 菜单中的 Push。接手时用 Pull。初学阶段分别执行 Pull 和 Push，方便看清每一步是否成功。
-
-## 4. 任务怎么安排
-
-当前的任务顺序与验收标准见 [TASKS.md](TASKS.md)，当前负责人和交接历史见 [HANDOFF.md](HANDOFF.md)。组员姓名、顺序和截止时间由小组填入，尚未替任何同学分配任务。
-
-也可以在 GitHub 的 **Issues → New issue → 小组任务** 建立任务，填写负责人、目标和验收标准。Issues 是任务讨论区，不会自动上传代码；在 TASKS.md 记录对应 Issue 链接，以 TASKS.md 为当前执行顺序。完成并推送后再关闭 Issue。模板已放在 `.github/ISSUE_TEMPLATE/task.md`。
-
-## 5. 当前实现与运行方法
-
-下面保留项目的技术说明。初始整理没有改动 Agent 算法。历史验证记录见 [SETUP_CHECKS.md](SETUP_CHECKS.md)；它记录的是对应日期的结果，不代表每位组员的新环境已经验证通过。
-
-基于官方 ChinaTravel 的可运行入门框架。中文任务、真实官方沙盒、单/多智能体切换、MCP 工具、独立官方评分器。模型配置采用你选择的 `deepseek-chat`。
-
-## 先从这里开始
-
-今天的手把手实践见 [架构说明与 MCP 课程](docs/02-mcp-lab.md)：工具发现、schema、手动查询、错误处理和独立验收。`run` 现在默认通过 MCP 调用工具；`--transport direct` 保留作对照。
-
-在 VS Code 中打开本目录，终端使用 PowerShell。以下命令从项目根目录执行，无需激活环境。
-
-```powershell
-.venv\Scripts\python.exe -m lab.cli doctor
-.venv\Scripts\python.exe -m lab.cli inspect
-.venv\Scripts\python.exe -m lab.cli smoke
-.venv\Scripts\python.exe -m pytest -q
-```
-
-`smoke` 不使用模型、不收费：加载真实任务，调用 Python 和 MCP 两条工具链，再确认官方评分器会拒绝无效行程。它不是 Agent 的成功率实验。
-
-## 接入 DeepSeek
-
-从 `.env.example` 创建本地 `.env` 后，在 VS Code 中填入 `DEEPSEEK_API_KEY`。不要把密钥放进代码、聊天或 Git。
+在本地 `.env` 填写模型配置，密钥不提交到仓库：
 
 ```dotenv
-DEEPSEEK_API_KEY=在本地填写
+DEEPSEEK_API_KEY=填写自己的密钥
 DEEPSEEK_BASE_URL=https://api.deepseek.com
 DEEPSEEK_MODEL=deepseek-chat
 ```
 
-保留用户指定的模型名。当前账号是否仍支持该模型/别名，需要真实连接后确认；如果返回 model not found，在 `.env` 修改为账号支持的模型 ID。不会自动换模型，避免影响实验。
+模型 ID 必须由账号支持。若更换模型，需重新记录配置并运行两组对照，不能混用不同模型的结果。
 
-然后先运行一条开发任务（会产生服务商 API 费用）：
-
-```powershell
-.venv\Scripts\python.exe -m lab.cli run --mode single --transport mcp --limit 1
-.venv\Scripts\python.exe -m lab.cli run --mode multi --transport mcp --limit 1
-```
-
-输出目录形如 `runs/日期时间-multi/`，命令结束时会打印准确路径。使用该路径评分：
+### 2.2 检查环境与工具
 
 ```powershell
-.venv\Scripts\python.exe -m lab.evaluate "runs/实际运行目录"
+.venv\Scripts\python.exe -m lab.cli doctor
+.venv\Scripts\python.exe -m lab.cli smoke
+.venv\Scripts\python.exe -m lab.cli mcp-check
+.venv\Scripts\python.exe -m pytest -q
 ```
 
-VS Code 的“运行和调试”也提供查看任务、自检、单智能体、多智能体四个入口；如未安装 Python/Debugger 扩展，可以直接使用终端命令。
+以上命令不发起付费模型请求。`smoke` 检查数据、direct/MCP 查询和评分器；`mcp-check` 检查协议握手、工具发现、调用与错误处理。
 
-## 框架如何工作
-
-```mermaid
-flowchart LR
-    Q[官方公开任务] --> W[Python 编排器]
-    W --> L[交通与住宿 Agent]
-    L --> A[景点与餐饮 Agent]
-    A --> P[行程整合 Agent]
-    L <--> T[官方沙盒工具 / MCP]
-    A <--> T
-    P <--> T
-    P --> J[plan.json]
-    J --> E[离线官方评分器]
-```
-
-三角色目前顺序执行，便于逐步调试。角色有独立提示词和工具范围，通过显式任务、候选和原始工具证据交接；最终规划角色协调全局预算与时间。暂未实现自治群聊、长期记忆、自动重规划和并行调度。
-
-- `lab/cli.py`：命令入口和运行记录。
-- `lab/workflow.py`：角色分工、提示词、交接数据；推荐从这里阅读。
-- `lab/agent.py`：手写工具调用循环、模型调用、统一计数与日志。
-- `lab/tools.py`：同一批官方工具的 direct/MCP 两种调用路径。
-- `lab/mcp_server.py`：使用官方 MCP Python SDK 包装沙盒。
-- `lab/benchmark.py`：只加载 Agent 可见的任务文本。
-- `lab/evaluate.py`：独立加载隐藏标注，调用官方逐任务评分函数。
-- `scripts/bootstrap.py`：下载固定版本官方代码与数据，记录哈希。
-- `vendor/ChinaTravel/`：官方代码，尽量保持原样。
-- `data/public/`：Agent 可见任务；`data/private/`：仅离线评分使用的标注。
-
-## 已加载的 benchmark 范围
-
-加载中文沙盒以及 `easy`、`medium`、`human` 三个官方任务 split。实际数量、源码 commit、数据 revision 和 SHA256 均记录在 `data/manifest.json`。
-
-为了学习，`data/splits.json` 固定使用 easy 的前 10 条作开发集，随后 20 条作本地 holdout。它们不是官方排行榜划分，规模也不足以支持普遍结论。正式实验前应确定有代表性的划分、检查近似任务泄漏并冻结。
+查看任务、工具定义或手动执行查询：
 
 ```powershell
-.venv\Scripts\python.exe -m lab.cli run --mode multi --subset holdout --limit 20
-# 非 easy split 需显式选 all：
-.venv\Scripts\python.exe -m lab.cli inspect --split human --limit 1
+.venv\Scripts\python.exe -m lab.cli inspect --split easy --limit 1
+.venv\Scripts\python.exe -m lab.cli tools
+.venv\Scripts\python.exe -m lab.cli tools --name attractions_select
+.venv\Scripts\python.exe -m lab.cli call attractions_select --args-file examples/mcp/attractions.json
 ```
 
-Agent 输入仅包含 UID 与自然语言请求，工具层不暴露其他任务加载、隐藏约束或任意命令执行。评分器不参与规划或迭代反馈。此隔离是代码接口边界，并非进程/文件系统级安全隔离。
+### 2.3 运行同一任务的单/多智能体版本
 
-## 评测与预算
-
-当前评分包括官方 schema、commonsense、hard-constraint 和三者联合通过情况；偏好指标留作后续接入。缺失输出算失败，评测异常应修复后再报告结果。结果仅适用于所选数据版本与任务子集。
-
-每条任务统一最多 24 次模型调用和 60 次工具调用。多智能体分配为研究 6+6、规划 12；单智能体最多 24 次。记录输入/输出 tokens、模型实际返回的型号、工具次数与墙钟时间。100000 token 阈值按服务端已返回的 usage 检查，某次请求的输入可能使累计值越界，不能当作严格账单上限。API 超时 120 秒、SDK 不自动重试；没有后台模型调用。
-
-比较 single/multi 时使用同一模型、工具传输方式、任务列表和总预算。MCP 的进程启动时间计入端到端延迟；是否并行、是否使用额外核验也要记录。
-
-## 新机器恢复
+下面的 UID 属于固定开发集。两条命令使用同一任务、模型配置、MCP 工具及总调用预算，会产生 DeepSeek API 费用。
 
 ```powershell
-uv python install 3.12
-uv sync --frozen
-.venv\Scripts\python.exe scripts/bootstrap.py
-if (!(Test-Path .env)) { Copy-Item .env.example .env }
+$taskUid = "e20241028160248698752"
+.venv\Scripts\python.exe -m lab.cli run --mode single --transport mcp --uid $taskUid
+.venv\Scripts\python.exe -m lab.cli run --mode multi --transport mcp --uid $taskUid
 ```
 
-首次下载需要 GitHub 与 Hugging Face 网络。已保存的数据可离线调用与评分。`uv.lock` 锁定依赖；`benchmark.lock.json` 锁定源码 commit、数据 revision 和下载文件哈希。下载脚本校验已保存文件，不会删除你修改过的官方源码。
+批量任务使用 `--subset dev --limit 10`；留出集使用 `--subset holdout --limit 20`。`medium`、`human` 不使用本地 easy 划分，需指定 `--split medium --subset all` 或 `--split human --subset all`，并设置 `--limit`。
 
-## 下一次手把手学习
+`tools`、`call` 和 `run` 默认使用 MCP；需要直接调用对照时指定 `--transport direct`。
 
-1. 打开 `data/public/easy.json` 的第一条任务，解释输入和要求。
-2. 在 `lab/workflow.py` 的 `solve()` 设断点，观察三个角色收到的信息。
-3. 运行一条真实 single，再运行同一条 multi，查看各自的 `trace.jsonl`。
-4. 用离线评分器定位失败，再决定要改工具使用、上下文还是任务分工。
+### 2.4 评分与查看结果
 
-上游：[ChinaTravel](https://github.com/LAMDA-NeSy/ChinaTravel) · [数据](https://huggingface.co/datasets/LAMDA-NeSy/ChinaTravel) · [沙盒](https://huggingface.co/datasets/LAMDA-NeSy/ChinaTravel-Sandbox)。官方代码/文档 MIT，官方数据 CC BY 4.0。请在研究报告中引用 ChinaTravel 论文。
+复现本次 4 easy + 3 medium + 3 human 的多智能体试运行，可执行以下命令（会产生新的 API 费用）。默认不限制累计 token，三个划分分别运行并自动离线评分：
+
+```powershell
+.venv\Scripts\python.exe scripts/run_pilot.py --counts 4 3 3
+```
+
+冻结的 UID、配置、代码快照和汇总结果保存在对应 `runs/*-pilot10-*/` 中。
+
+每次运行结束会打印结果目录。对 single 和 multi 的目录分别执行：
+
+```powershell
+.venv\Scripts\python.exe -m lab.evaluate "runs/替换为实际运行目录"
+```
+
+结果目录包含：
+
+```text
+runs/日期时间-split-mode-随机后缀/
+  run.json                  任务列表、数据版本与运行配置
+  metrics_summary.json      整批调用数、tokens 和执行状态
+  evaluation_summary.json   评分后生成的汇总
+  <uid>/
+    task.json               当前任务
+    trace.jsonl             模型请求、响应、工具结果与交接
+    plan.json               成功产出的计划；运行失败时可能不存在
+    metrics.json            本任务状态、耗时和用量
+    evaluation.json         评分后生成的逐任务结果
+```
+
+
+## 3. 后续工作
+
+1. **完成失败任务的跑通与优化**：补充餐厅重复规则，改善预算与时间的联合规划；保留逐条失败分析，修改后在相同任务、模型与预算下复测。
+2. **单/多智能体对照**：使用相同模型、工具、任务与总预算，比较完整成功率、tokens、调用次数和耗时。single 尚未实测，不能据现有结果断言多智能体更优。
+3. **上下文管理**：尝试候选裁剪、证据去重、结构化交接与保留来源的摘要，检查价格、实体和时间约束是否丢失。
+4. **评测扩展**：增加任务覆盖与重复运行；分别做消融，冻结方法后再评测留出集，按准确性与成本比较效果。
+
+任务安排见 [TASKS.md](TASKS.md)，交接记录见 [HANDOFF.md](HANDOFF.md)，Git 协作方法见 [协作说明](docs/collaboration.md)。
+
+数据来源：[ChinaTravel Query](https://huggingface.co/datasets/LAMDA-NeSy/ChinaTravel)、[ChinaTravel Sandbox](https://huggingface.co/datasets/LAMDA-NeSy/ChinaTravel-Sandbox)。上游代码与文档采用 MIT，官方数据采用 CC BY 4.0；研究报告应引用 ChinaTravel 论文。
+
+## 4. 测试结果
+
+最终版本使用 multi + MCP、DeepSeek `deepseek-chat`（服务返回 `deepseek-flash`），在固定的 10 条开发任务上各运行一次。完整通过要求 schema、常识约束与硬约束同时通过，缺失计划计为失败。
+
+- **easy：4/4，100%**。
+- **medium：2/3，66.7%**。
+- **human：2/3，66.7%**。
+- **合计：8/10，80%**；生成正式计划 9/10，90%。
+
+44 项自动化测试通过；本批次评分器异常、token 截断均为 0。输入输出合计 4,143,511 tokens，165 次模型请求、400 次工具调用，另有 611 条内部逻辑事实读取记录。
+
+剩余两条分别为预算/时间联合规划未收敛，以及重复餐厅规则漏检。以上为开发任务的单次结果，不代表完整 benchmark 或留出集性能。发布的逐条结果与配置见 [结果清单](docs/experiments/latest-results.json)。

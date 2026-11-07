@@ -1,0 +1,273 @@
+{
+  "date": "2026-11-07",
+  "scope": "Frozen development selection, one run per task; not held-out or full benchmark results",
+  "mode": "multi",
+  "transport": "mcp",
+  "settings": {
+    "model": "deepseek-chat",
+    "base_url": "https://api.deepseek.com",
+    "temperature": 0.0,
+    "max_model_calls": 24,
+    "max_tool_calls": 60,
+    "max_output_tokens": null,
+    "max_total_tokens": null,
+    "max_context_chars": null,
+    "timeout_seconds": 120.0
+  },
+  "benchmark": {
+    "code_commit": "f445e0011f42594fcc29b8c752ece06ded9a8218",
+    "sources": {
+      "LAMDA-NeSy/ChinaTravel-Sandbox": {
+        "revision": "885c7dad143bf040238ddca263f4788d582ee0f4",
+        "files": {
+          "raw/ChinaTravel_sandbox_zh.zip": {
+            "sha256": "42d95ff7b8f96574d0ee972ca77599258e4854a219617868caeb462b79c715bd",
+            "bytes": 1027737
+          }
+        }
+      },
+      "LAMDA-NeSy/ChinaTravel": {
+        "revision": "a7d893afb628af6ca181625b6c7cca2d60a6bccb",
+        "files": {
+          "easy.csv": {
+            "sha256": "cb0b7940defa8a9b260bac12bee3fb3254678883b40371c3ca8f33c5f37153e3",
+            "bytes": 353344
+          },
+          "medium.csv": {
+            "sha256": "9cd49188a8f2a01b900abecc3f10263c257bcb761cf2635e5f0d4fb53d93f77b",
+            "bytes": 275424
+          },
+          "human.csv": {
+            "sha256": "2f0d61e37665a345bd428732ace6e1ce9d6de2af8d292047bcf5cc1c4f9cfc78",
+            "bytes": 171906
+          }
+        }
+      }
+    },
+    "task_counts": {
+      "easy": 300,
+      "medium": 150,
+      "human": 154
+    },
+    "sandbox_csv_count": 30
+  },
+  "scorer": {
+    "vendor\\ChinaTravel\\chinatravel\\symbol_verification\\commonsense_constraint.py": "41aaf3c848380ee4428bca8a75408119b6df2c8295d90126db7beb7ffe321637",
+    "vendor\\ChinaTravel\\chinatravel\\evaluation\\output_schema.json": "6bd2ab0da6930e9d3593034e24b53ab7c6d345063ad4e81f4114e1afb4d5c439",
+    "vendor\\ChinaTravel\\chinatravel\\evaluation\\commonsense_constraint.py": "521bf879f5879dbc5bb86fceb75d09c9145c80d67caf95cd3ff38d6b99c80b31",
+    "vendor\\ChinaTravel\\chinatravel\\evaluation\\hard_constraint.py": "f0b796e965dd93cbb6d7255508ab4c6b77fee49eed0d1473ce4a419a9d7efeab",
+    "vendor\\ChinaTravel\\agent_env\\scripts\\solve_script_with_harness.py": "460cbbdc2db8f8a0093ea2432dab6836edc3dc9556f10f244ada69db7f771bd6",
+    "lab\\evaluate.py": "6db58ba616a1a384f08dbc67ff4dbf1be809c6d91ad470978b093a4ce655c10d"
+  },
+  "generation_source_sha256": {
+    "lab\\__init__.py": "5ac68cb5125d3ea82bea0ebf50d5e59c67de72b27ed37b88ecb418fa15b750b1",
+    "lab\\agent.py": "8dfb23389c6a98c18ba523462f536f675c668a44b98b1eb16b42f74c718e45e4",
+    "lab\\benchmark.py": "bc87aaf3cbad693220bb2b6c52b0abd03993f6dcd31b6471cc21bec9e5ab68af",
+    "lab\\cli.py": "e70f8dfde3876b3e8d9ff6a8bf6b45bd9758dea41a9479f0200f612bf1606b44",
+    "lab\\common.py": "61ccf2a52b7d2cf607153b2cf0fae25a0835df73d40358075686c0c62a917f11",
+    "lab\\config.py": "c7e5db9c1632ed2ee3aa6e7a61943ac42ea0fdeb8c8515973cadb57d2d056527",
+    "lab\\evaluate.py": "6db58ba616a1a384f08dbc67ff4dbf1be809c6d91ad470978b093a4ce655c10d",
+    "lab\\mcp_check.py": "b09ef1b1ec10798bac5160b5841c80a3485e965aacfe03384e332b44ea536afc",
+    "lab\\mcp_server.py": "7e0b148c5c1c2123b0fa3012d3b036a37eaea977643faa775c8cef490bb79bd1",
+    "lab\\plan_tool.py": "5e0f3ff39c6ca752ab3be23042191591aaec13cfce18ed716e4cbb735f14626b",
+    "lab\\tools.py": "cf9ae488576da91ae74431e437b5cf258f787af7085da0fbe1e1309edf4ce763",
+    "lab\\validation.py": "eea137ba780339d0562903f51b2e4b7ce8c464acec8715875584c7d2505b565a",
+    "lab\\workflow.py": "66902bf1c202ac7a6dcd3d3c0721257ca61073d7637025125ec306544da597e9"
+  },
+  "tasks": 10,
+  "accepted_plans": 9,
+  "all_pass": 8,
+  "success_rate": 0.8,
+  "split_results": {
+    "easy": {
+      "tasks": 4,
+      "all_pass": 4
+    },
+    "medium": {
+      "tasks": 3,
+      "all_pass": 2
+    },
+    "human": {
+      "tasks": 3,
+      "all_pass": 2
+    }
+  },
+  "scorer_exceptions": 0,
+  "truncated_responses": 0,
+  "cases": [
+    {
+      "uid": "e20241028160248698752",
+      "split": "easy",
+      "status": "completed",
+      "schema_pass": true,
+      "commonsense_pass": true,
+      "logical_pass": true,
+      "all_pass": true,
+      "error_types": [],
+      "failed_commonsense_checks": [],
+      "failed_hard_checks": [],
+      "input_tokens": 236529,
+      "output_tokens": 8669,
+      "model_calls": 14,
+      "tool_calls": 27,
+      "grounding_queries": 30
+    },
+    {
+      "uid": "e20241028160251109186",
+      "split": "easy",
+      "status": "completed",
+      "schema_pass": true,
+      "commonsense_pass": true,
+      "logical_pass": true,
+      "all_pass": true,
+      "error_types": [],
+      "failed_commonsense_checks": [],
+      "failed_hard_checks": [],
+      "input_tokens": 214238,
+      "output_tokens": 9178,
+      "model_calls": 13,
+      "tool_calls": 29,
+      "grounding_queries": 26
+    },
+    {
+      "uid": "e20241028160253742452",
+      "split": "easy",
+      "status": "completed",
+      "schema_pass": true,
+      "commonsense_pass": true,
+      "logical_pass": true,
+      "all_pass": true,
+      "error_types": [],
+      "failed_commonsense_checks": [],
+      "failed_hard_checks": [],
+      "input_tokens": 175370,
+      "output_tokens": 8931,
+      "model_calls": 12,
+      "tool_calls": 26,
+      "grounding_queries": 13
+    },
+    {
+      "uid": "e20241028160255878579",
+      "split": "easy",
+      "status": "completed",
+      "schema_pass": true,
+      "commonsense_pass": true,
+      "logical_pass": true,
+      "all_pass": true,
+      "error_types": [],
+      "failed_commonsense_checks": [],
+      "failed_hard_checks": [],
+      "input_tokens": 279006,
+      "output_tokens": 10196,
+      "model_calls": 15,
+      "tool_calls": 38,
+      "grounding_queries": 28
+    },
+    {
+      "uid": "e20241028160842228543",
+      "split": "medium",
+      "status": "completed",
+      "schema_pass": true,
+      "commonsense_pass": true,
+      "logical_pass": true,
+      "all_pass": true,
+      "error_types": [],
+      "failed_commonsense_checks": [],
+      "failed_hard_checks": [],
+      "input_tokens": 585862,
+      "output_tokens": 18376,
+      "model_calls": 21,
+      "tool_calls": 59,
+      "grounding_queries": 70
+    },
+    {
+      "uid": "e20241028160845920703",
+      "split": "medium",
+      "status": "completed",
+      "schema_pass": true,
+      "commonsense_pass": true,
+      "logical_pass": true,
+      "all_pass": true,
+      "error_types": [],
+      "failed_commonsense_checks": [],
+      "failed_hard_checks": [],
+      "input_tokens": 317181,
+      "output_tokens": 11147,
+      "model_calls": 17,
+      "tool_calls": 35,
+      "grounding_queries": 23
+    },
+    {
+      "uid": "e20241028160848776495",
+      "split": "medium",
+      "status": "failed",
+      "schema_pass": false,
+      "commonsense_pass": false,
+      "logical_pass": false,
+      "all_pass": false,
+      "error_types": [
+        "BudgetExceeded"
+      ],
+      "failed_commonsense_checks": [],
+      "failed_hard_checks": [],
+      "input_tokens": 292500,
+      "output_tokens": 9293,
+      "model_calls": 16,
+      "tool_calls": 24,
+      "grounding_queries": 70
+    },
+    {
+      "uid": "h20241029143447759844",
+      "split": "human",
+      "status": "completed",
+      "schema_pass": true,
+      "commonsense_pass": true,
+      "logical_pass": true,
+      "all_pass": true,
+      "error_types": [],
+      "failed_commonsense_checks": [],
+      "failed_hard_checks": [],
+      "input_tokens": 559724,
+      "output_tokens": 16188,
+      "model_calls": 19,
+      "tool_calls": 56,
+      "grounding_queries": 34
+    },
+    {
+      "uid": "h20241029143450090032",
+      "split": "human",
+      "status": "completed",
+      "schema_pass": true,
+      "commonsense_pass": true,
+      "logical_pass": true,
+      "all_pass": true,
+      "error_types": [],
+      "failed_commonsense_checks": [],
+      "failed_hard_checks": [],
+      "input_tokens": 515545,
+      "output_tokens": 18269,
+      "model_calls": 17,
+      "tool_calls": 48,
+      "grounding_queries": 127
+    },
+    {
+      "uid": "h20241029143451793119",
+      "split": "human",
+      "status": "completed",
+      "schema_pass": true,
+      "commonsense_pass": false,
+      "logical_pass": true,
+      "all_pass": false,
+      "error_types": [],
+      "failed_commonsense_checks": [
+        "Repeated Restruants Choices"
+      ],
+      "failed_hard_checks": [],
+      "input_tokens": 827485,
+      "output_tokens": 29824,
+      "model_calls": 21,
+      "tool_calls": 58,
+      "grounding_queries": 190
+    }
+  ]
+}

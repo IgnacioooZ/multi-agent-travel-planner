@@ -22,7 +22,11 @@ class ModelDouble:
         if "output_schema" in context:
             assert [x["agent"] for x in context["handoffs"]] == ["logistics", "activities"]
             assert all(x["evidence"][0]["result"]["success"] for x in context["handoffs"])
-            payload = {"people_number": 1, "start_city": "上海", "target_city": "杭州", "itinerary": []}
+            payload = {"people_number": 1, "start_city": "上海", "target_city": "杭州", "itinerary": [{"day": 1, "activities": [
+                {"type":"train","TrainID":"G1321","start_time":"06:10","end_time":"06:56","transports":[]},
+                {"type": "attraction", "position": "灵隐寺", "start_time": "09:00", "end_time": "10:00", "transport_mode":"taxi", "transports": []}]}]}
+            if tool_results:
+                calls = [{"id":"submit","type":"function","function":{"name":"finalize_plan","arguments":json.dumps({'plan':payload})}}]
         return {"content": json.dumps(payload), "tool_calls": calls, "input_tokens": 10, "output_tokens": 5, "served_model": "test-double", "finish_reason": "stop"}
 
 
@@ -32,5 +36,5 @@ def test_all_roles_use_real_mcp(tmp_path):
         async with connect_tools("mcp") as tools:
             plan = await solve({"uid": "integration-test", "request": "从上海去杭州一日游"}, "multi", ModelDouble(), tools, Settings(), usage, Trace(tmp_path / "trace.jsonl"))
         assert plan["target_city"] == "杭州"
-        assert usage.tool_calls == 3 and usage.model_calls == 6
+        assert usage.tool_calls == 4 and usage.model_calls == 6
     asyncio.run(check())

@@ -111,6 +111,8 @@ def main():
     manifest["task_counts"] = counts
     manifest["sandbox_csv_count"] = len(list(database.rglob("*.csv")))
     write_json(manifest_path, manifest)
+    from scripts.apply_upstream_fixes import apply_fix
+    apply_fix()
     print(json.dumps({"status": "ready", **counts, "sandbox_csv_count": manifest["sandbox_csv_count"]}, ensure_ascii=False))
 
 

@@ -11,9 +11,11 @@ class Settings:
     temperature: float = 0.0
     max_model_calls: int = 24
     max_tool_calls: int = 60
-    max_output_tokens: int = 4096
-    max_total_tokens: int = 100000
-    max_context_chars: int = 160000
+    # None: use the service's advertised maximum, not its smaller default.
+    max_output_tokens: int | None = None
+    # None 表示只记录累计用量，不因累计 tokens 停止任务。
+    max_total_tokens: int | None = None
+    max_context_chars: int | None = None
     timeout_seconds: float = 120.0
 
     @classmethod
