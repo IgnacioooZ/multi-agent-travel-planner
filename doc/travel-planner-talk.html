@@ -1,0 +1,599 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>Multiagent Travel Assistant</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   Engineering / dashboard — hairline rules, real tables,
+   monospace data, single accent (deep blue). Baseline gray,
+   semantic green/red reserved for pass/fail. Placeholder
+   values shown as striped bars + "占位" chip.
+   Type: IBM Plex Sans (text) + IBM Plex Mono (data).
+   ============================================================ */
+:root{
+  --bg:#FFFFFF; --surface:#FFFFFF; --surface-2:#F6F8FB;
+  --ink:#14181E; --ink-2:#3C4654; --muted:#667080; --line:#E3E7EC; --line-strong:#C7CFD9;
+  --accent:#1A56DB; --accent-ink:#FFFFFF;
+  --baseline:#9AA4B2;
+  --good:#1E8A5A; --bad:#C0392B;
+  --radius:2px;
+  --font-s:"IBM Plex Sans",system-ui,sans-serif;
+  --font-m:"IBM Plex Mono",ui-monospace,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0F1418; --surface:#141A20; --surface-2:#1A2129;
+    --ink:#E6EAF0; --ink-2:#B4BDC8; --muted:#7E8A99; --line:#2A323C; --line-strong:#3A4652;
+    --accent:#6B9BFF; --accent-ink:#0F1418;
+    --baseline:#55606E;
+    --good:#2FBF82; --bad:#E0564A;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0F1418; --surface:#141A20; --surface-2:#1A2129;
+  --ink:#E6EAF0; --ink-2:#B4BDC8; --muted:#7E8A99; --line:#2A323C; --line-strong:#3A4652;
+  --accent:#6B9BFF; --accent-ink:#0F1418;
+  --baseline:#55606E;
+  --good:#2FBF82; --bad:#E0564A;
+  color-scheme:dark;
+}
+
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{
+  font-family:var(--font-s); color:var(--ink); background:var(--bg);
+  -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
+  font-variant-numeric:tabular-nums;
+}
+
+/* ---------- deck ---------- */
+.deck{position:fixed; inset:0; overflow:hidden}
+.slide{position:absolute; inset:0; display:flex; opacity:0; visibility:hidden; transition:opacity .4s ease, transform .4s ease; transform:translateX(20px)}
+.slide.active{opacity:1; visibility:visible; transform:translateX(0); z-index:2}
+.slide .s-inner{
+  width:100%; max-width:1200px; margin:0 auto;
+  padding:60px 48px 104px;
+  padding-left:max(48px, env(safe-area-inset-left,0px));
+  padding-right:max(48px, env(safe-area-inset-right,0px));
+  max-height:100%; overflow-y:auto;
+}
+
+/* ---------- slide header ---------- */
+.s-head{display:flex; align-items:baseline; justify-content:space-between; gap:16px; margin-bottom:20px; border-bottom:1px solid var(--line-strong); padding-bottom:11px}
+.kicker{font-family:var(--font-m); font-size:12px; font-weight:600; letter-spacing:.14em; text-transform:uppercase; color:var(--accent)}
+.s-no{font-family:var(--font-m); font-size:12px; color:var(--muted); letter-spacing:.06em}
+.h1{font-family:var(--font-s); font-weight:700; letter-spacing:-.02em; font-size:clamp(23px,3.2vw,38px); line-height:1.12; margin:0 0 14px; text-wrap:balance; color:var(--ink)}
+.h1 .em{color:var(--accent)}
+.lead{font-size:clamp(14.5px,1.6vw,17px); line-height:1.6; color:var(--ink-2); margin:0 0 22px; max-width:80ch}
+.lead b{color:var(--ink); font-weight:600}
+
+/* ---------- list ---------- */
+.list{display:flex; flex-direction:column}
+.li{display:flex; gap:16px; padding:13px 0; border-bottom:1px solid var(--line); align-items:flex-start}
+.li:last-child{border-bottom:0}
+.li .n{flex:0 0 auto; font-family:var(--font-m); font-size:12px; font-weight:600; color:var(--accent); width:24px; height:24px; border:1px solid var(--line-strong); display:grid; place-items:center; margin-top:1px; border-radius:var(--radius)}
+.li .t{font-size:clamp(14.5px,1.55vw,16.5px); line-height:1.6; color:var(--ink-2)}
+.li .t b{color:var(--ink); font-weight:600}
+.li .t .sub{display:block; font-size:13.5px; color:var(--muted); margin-top:3px}
+
+/* ---------- example rows (slide 1) ---------- */
+.ex{display:grid; grid-template-columns:150px 1fr; border-top:1px solid var(--line-strong)}
+.ex .ex-cat{font-family:var(--font-m); font-size:12.5px; font-weight:600; letter-spacing:.05em; color:var(--accent); padding:15px 0; border-bottom:1px solid var(--line)}
+.ex .ex-body{padding:15px 0; border-bottom:1px solid var(--line); font-size:15px; line-height:1.6; color:var(--ink-2)}
+.ex .ex-body b{color:var(--ink); font-weight:600}
+.ex .ex-body .w{font-family:var(--font-m); font-size:12.5px; color:var(--muted); display:inline-block; margin-right:8px}
+
+/* ---------- table ---------- */
+.tbl-wrap{overflow-x:auto; border:1px solid var(--line-strong); border-radius:var(--radius)}
+table.tbl{width:100%; border-collapse:collapse; font-size:14px; background:var(--surface)}
+.tbl th{font-family:var(--font-m); font-size:11.5px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); text-align:left; padding:10px 14px; border-bottom:1px solid var(--line-strong); background:var(--surface-2); white-space:nowrap}
+.tbl td{padding:10px 14px; border-bottom:1px solid var(--line); vertical-align:top; color:var(--ink-2)}
+.tbl tr:last-child td{border-bottom:0}
+.tbl td.num,.tbl th.num{font-family:var(--font-m); text-align:right; white-space:nowrap}
+.tbl td.mono{font-family:var(--font-m); font-size:13px}
+.tbl td.hl{color:var(--accent); font-weight:600}
+.tbl .rowhead{color:var(--ink); font-weight:600; white-space:nowrap}
+.tbl .ok{color:var(--good); font-weight:600}
+.tbl .no{color:var(--bad); font-weight:600}
+
+/* ---------- hbar chart ---------- */
+.hbar{display:grid; grid-template-columns:130px 1fr 96px; align-items:center; gap:16px; padding:11px 0; border-bottom:1px solid var(--line)}
+.hbar:last-of-type{border-bottom:0}
+.hbar__label{font-size:14px; color:var(--ink-2)}
+.hbar__track{position:relative; height:22px; background:var(--surface-2); border:1px solid var(--line)}
+.hbar__grid{position:absolute; top:0; bottom:0; width:1px; background:var(--line)}
+.hbar__base{position:absolute; top:-6px; bottom:-6px; left:25%; width:2px; background:var(--baseline)}
+.hbar__fill{position:absolute; left:0; top:0; bottom:0; background:var(--accent)}
+.hbar__val{font-family:var(--font-m); font-size:13px; font-weight:600; color:var(--accent); text-align:right}
+.hbar.ruler{border-bottom:1px solid var(--line-strong); padding:0 0 6px}
+.hbar__ruler{position:relative; height:16px}
+.hbar__ruler span{position:absolute; transform:translateX(-50%); font-family:var(--font-m); font-size:10.5px; color:var(--muted)}
+.hbar__ruler span:first-child{transform:none}
+.hbar__ruler span:last-child{transform:translateX(-100%)}
+.legend{display:flex; gap:22px; margin:14px 0 0; font-size:13px; color:var(--ink-2); align-items:center; flex-wrap:wrap}
+.legend .sw{width:14px; height:14px; display:inline-block; margin-right:7px; vertical-align:-2px; border:1px solid var(--line-strong)}
+.legend .sw.base{background:var(--baseline)}
+.legend .sw.acc{background:var(--accent)}
+.legend .sw.ph{background:repeating-linear-gradient(45deg, var(--baseline), var(--baseline) 3px, color-mix(in srgb, var(--baseline) 40%, transparent) 3px, color-mix(in srgb, var(--baseline) 40%, transparent) 6px)}
+.note{font-family:var(--font-m); font-size:12px; color:var(--muted); margin-top:14px; line-height:1.5}
+
+/* ---------- grouped bar (single vs multi pass rate) ---------- */
+.grow{display:grid; grid-template-columns:70px 60px 1fr 168px; align-items:center; gap:14px; padding:7px 0}
+.grow__split{font-size:13px; font-weight:600; color:var(--ink)}
+.grow__series{font-family:var(--font-m); font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.05em}
+.grow__track{position:relative; height:16px; background:var(--surface-2); border:1px solid var(--line)}
+.gfill{position:absolute; left:0; top:0; bottom:0}
+.gfill--single{background:var(--baseline)}
+.gfill--multi{background:var(--accent)}
+.gfill--ph{background:repeating-linear-gradient(45deg, var(--baseline), var(--baseline) 4px, color-mix(in srgb, var(--baseline) 40%, transparent) 4px, color-mix(in srgb, var(--baseline) 40%, transparent) 8px)}
+.grow__val{font-family:var(--font-m); font-size:12.5px; text-align:right; color:var(--ink-2); white-space:nowrap}
+.grow.gap{border-top:1px solid var(--line-strong); margin-top:6px; padding-top:11px}
+.ph{display:inline-block; font-family:var(--font-m); font-size:10px; font-weight:600; color:var(--bad); border:1px solid var(--bad); border-radius:2px; padding:1px 5px; margin-left:5px}
+
+/* ---------- banner ---------- */
+.banner{border:1px solid var(--line-strong); border-left:3px solid var(--accent); padding:13px 18px; margin-bottom:20px; background:var(--surface); border-radius:var(--radius)}
+.banner .b-title{font-weight:600; color:var(--ink); font-size:15px}
+.banner .b-sub{font-size:13.5px; color:var(--muted); margin-top:4px}
+
+/* ---------- 2-col grid ---------- */
+.grid2{display:grid; grid-template-columns:1fr 1fr; gap:18px}
+.cell{border:1px solid var(--line-strong); border-radius:var(--radius); padding:18px 20px}
+.cell h3{font-family:var(--font-s); font-weight:600; font-size:15px; margin:0 0 8px; color:var(--ink)}
+.cell p{margin:0; font-size:14.5px; line-height:1.6; color:var(--ink-2)}
+.cell p b{color:var(--ink); font-weight:600}
+.cell .tag{font-family:var(--font-m); font-size:11px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--accent); display:block; margin-bottom:10px}
+
+/* ---------- code block (plan.json) ---------- */
+.code{border:1px solid var(--line-strong); border-radius:var(--radius); background:var(--surface-2); padding:14px 16px; font-family:var(--font-m); font-size:12px; line-height:1.55; overflow-x:auto; color:var(--ink-2); margin:6px 0}
+
+/* ---------- architecture ---------- */
+.arch{display:flex; flex-direction:column; align-items:center; gap:0}
+.arch-node{border:1px solid var(--line-strong); border-radius:var(--radius); padding:11px 18px; background:var(--surface); text-align:left; min-width:0}
+.arch-node--wide{width:100%; max-width:660px}
+.arch-node--accent{border-left:3px solid var(--accent)}
+.arch-node .t{font-weight:600; font-size:14.5px; color:var(--ink)}
+.arch-node .s{font-family:var(--font-m); font-size:11.5px; color:var(--muted); margin-top:3px}
+.arch-arrow{height:18px; display:flex; justify-content:center; align-items:center; position:relative; width:100%}
+.arch-arrow::before{content:""; width:2px; height:12px; background:var(--line-strong)}
+.arch-arrow::after{content:""; position:absolute; top:2px; left:50%; transform:translateX(-50%) rotate(45deg); width:9px; height:9px; border-right:2px solid var(--line-strong); border-bottom:2px solid var(--line-strong); margin-top:5px}
+.arch-internal{border:1px solid var(--line-strong); border-radius:var(--radius); padding:18px; background:var(--surface); margin-top:20px}
+.arch-subtitle{font-family:var(--font-m); font-size:11px; font-weight:600; letter-spacing:.1em; text-transform:uppercase; color:var(--muted); margin:22px 0 10px}
+.pipe{display:flex; align-items:stretch; gap:8px; flex-wrap:wrap}
+.pipe .node{border:1px solid var(--line-strong); border-radius:var(--radius); padding:9px 13px; background:var(--surface-2); min-width:118px; text-align:left}
+.pipe .node.accent{border-left:3px solid var(--accent); background:var(--surface)}
+.pipe .node.strong{border:1.5px solid var(--accent)}
+.pipe .node.out{background:var(--ink); border-color:var(--ink)}
+.pipe .node .t{font-size:13.5px; font-weight:600; color:var(--ink)}
+.pipe .node.out .t{color:var(--bg)}
+.pipe .node .s{font-family:var(--font-m); font-size:10px; color:var(--muted); display:block; margin-top:2px}
+.pipe .node .tools{font-family:var(--font-m); font-size:10px; color:var(--muted); display:block; margin-top:7px; padding-top:6px; border-top:1px solid var(--line)}
+.pipe .arr{font-family:var(--font-m); color:var(--muted); align-self:center}
+.internal-note{font-size:13px; color:var(--muted); line-height:1.6; margin-top:14px}
+
+/* ---------- title slide ---------- */
+.title-wrap{max-width:1000px}
+.title-wrap .s-head{margin-bottom:38px}
+.title-wrap .h1{font-size:clamp(32px,5.2vw,58px); line-height:1.08; margin-bottom:18px}
+.title-wrap .sub{font-size:clamp(16px,2vw,20px); color:var(--ink-2); line-height:1.5}
+.members{margin-top:40px; border-top:1px solid var(--line-strong); padding-top:15px; font-size:13.5px; color:var(--muted); font-family:var(--font-m)}
+.members b{color:var(--ink-2); font-weight:600}
+
+/* ---------- controls ---------- */
+.progress{position:fixed; top:0; left:0; right:0; height:3px; background:var(--line); z-index:20}
+.progress .fill{height:100%; background:var(--accent); width:0; transition:width .25s ease}
+.dots{position:fixed; bottom:18px; left:50%; transform:translateX(-50%); display:flex; gap:7px; z-index:20; align-items:center; padding:8px 12px; background:var(--surface); border:1px solid var(--line-strong); border-radius:var(--radius)}
+.dot{width:8px; height:8px; border-radius:0; background:var(--line-strong); border:0; cursor:pointer; padding:0}
+.dot.active{background:var(--accent); width:18px}
+.counter{font-family:var(--font-m); font-size:11.5px; color:var(--muted); margin:0 8px; letter-spacing:.04em}
+.tools{position:fixed; bottom:18px; right:18px; z-index:20; display:flex; gap:8px}
+.tool{width:36px; height:36px; border-radius:var(--radius); border:1px solid var(--line-strong); background:var(--surface); color:var(--ink-2); cursor:pointer; font-size:15px; display:grid; place-items:center}
+.tool:hover{color:var(--accent); border-color:var(--accent)}
+.nav{position:fixed; top:50%; transform:translateY(-50%); z-index:19; width:40px; height:58px; border-radius:var(--radius); border:1px solid var(--line-strong); background:var(--surface); color:var(--ink-2); cursor:pointer; font-size:20px; display:grid; place-items:center; opacity:.5; transition:opacity .2s}
+.nav:hover{opacity:1; color:var(--accent)}
+.nav.prev{left:16px}
+.nav.next{right:16px}
+:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+
+@media (max-width:820px){
+  .slide .s-inner{padding:52px 20px 92px}
+  .grid2{grid-template-columns:1fr}
+  .ex{grid-template-columns:1fr}
+  .ex .ex-cat{padding-bottom:6px; border-bottom:0}
+  .ex .ex-body{padding-top:6px}
+  .hbar{grid-template-columns:96px 1fr 76px}
+  .grow{grid-template-columns:56px 48px 1fr 130px}
+  .arch-modes{grid-template-columns:1fr}
+  .nav{display:none}
+}
+@media (prefers-reduced-motion: reduce){
+  .slide{transition:none; transform:none}
+  .progress .fill{transition:none}
+}
+</style>
+</head>
+<body>
+<div class="progress"><div class="fill" id="progressFill"></div></div>
+<div class="deck" id="deck">
+
+  <!-- 0 · Title -->
+  <section class="slide active">
+    <div class="s-inner title-wrap">
+      <div class="s-head"><span class="kicker">HKUST · NLP · Group 22</span><span class="s-no">0</span></div>
+      <h1 class="h1">Evaluating and Improving Collaboration<br>in a Multiagent Travel Assistant</h1>
+      <p class="sub">多智能体旅行助手中的协作成本与收益</p>
+      <div class="members"><b>Zhang Jiaye</b> 21363091 &nbsp;·&nbsp; <b>Xiao Yushan</b> 21323596 &nbsp;·&nbsp; <b>Zhang Yijie</b> 21319844 &nbsp;·&nbsp; <b>Yang Chenzi</b> 21314521</div>
+    </div>
+  </section>
+
+  <!-- 1 · Motivation ① -->
+  <section class="slide">
+    <div class="s-inner">
+      <div class="s-head"><span class="kicker">01 · Motivation</span><span class="s-no">1 / 11</span></div>
+      <h1 class="h1">多智能体协作已在复杂任务上取得显著进展</h1>
+      <p class="lead">随着大语言模型（LLM）能力的提升，越来越多的系统不再依赖单个模型，而是将任务分解给多个角色 agent，通过分工与对话协作完成目标。多智能体系统已在软件工程、科学研究、推理与行为模拟等方向上展现出单模型难以企及的能力。以下是几类代表性的主流工作。</p>
+      <div class="ex">
+        <div class="ex-cat">协作框架</div>
+        <div class="ex-body"><span class="w">AutoGen · MetaGPT · ChatDev · CAMEL</span>将任务分解给多个角色 agent，通过对话与分工完成<b>软件开发、科学研究</b>等复杂流程。</div>
+        <div class="ex-cat">推理增强</div>
+        <div class="ex-body"><span class="w">Du et al., 2023</span>多智能体<b>辩论</b>：多个 agent 相互质疑与修正，提升事实性与推理正确性。</div>
+        <div class="ex-cat">行为模拟</div>
+        <div class="ex-body"><span class="w">Park et al., 2023</span><b>Generative Agents</b>：多 agent 环境中涌现出可信的社会行为。</div>
+      </div>
+      <p class="lead" style="margin-top:22px; margin-bottom:0">这些系统的能力来源是「<b>角色分工 + 协作</b>」。但现有工作大多在<b>整体效果</b>上报告提升，很少把「协作」这一变量单独、受控地评估——我们难以判断：提升究竟来自协作本身，还是仅仅来自更多的模型调用与计算预算。</p>
+    </div>
+  </section>
+
+  <!-- 2 · Motivation ② -->
+  <section class="slide">
+    <div class="s-inner">
+      <div class="s-head"><span class="kicker">02 · Motivation</span><span class="s-no">2 / 11</span></div>
+      <h1 class="h1">旅行规划是评估协作的理想试验场</h1>
+      <p class="lead">旅行规划是一项典型的复杂决策任务，天然适合检验多智能体协作，原因如下：</p>
+      <div class="list">
+        <div class="li"><span class="n">1</span><div class="t"><b>任务天然可分解。</b>一次完整的旅行规划涉及交通、住宿、景点、餐饮等多个子目标，每个子目标对应不同的查询工具与约束。这种结构很适合把任务拆给多个角色分别研究。</div></div>
+        <div class="li"><span class="n">2</span><div class="t"><b>约束可验证。</b>预算、时间、开放时间、距离可行性等都是<b>硬约束</b>——「成功」可以被客观判定，而不是靠"看起来合理"。这让我们能用统一的评分器衡量协作是否真的有效。</div></div>
+        <div class="li"><span class="n">3</span><div class="t"><b>公开基准与沙盒。</b>ChinaTravel 提供固定任务集、受控数据库快照与离线评分器，支持可复现评测；每个任务只暴露公开的 uid 与 request，隐藏约束仅由评分器使用，避免了"看了答案再答"的泄漏。</div></div>
+        <div class="li"><span class="n">4</span><div class="t"><b>现有不足。</b>少有工作在与单智能体<b>相同的模型、工具、预算</b>下做受控对照，协作的收益难以归因——这正是我们想填补的空缺。</div></div>
+      </div>
+      <p class="lead" style="margin-top:22px; margin-bottom:0">因此，我们复现一个多智能体旅行助手，搭建 single / multi 受控对照，以<b>评估并进一步改进协作机制</b>。</p>
+    </div>
+  </section>
+
+  <!-- 3 · 研究问题与贡献 -->
+  <section class="slide">
+    <div class="s-inner">
+      <div class="s-head"><span class="kicker">03 · 问题与贡献</span><span class="s-no">3 / 11</span></div>
+      <h1 class="h1">研究问题</h1>
+      <p class="lead">在<b>相同的模型、工具与预算</b>下，多智能体协作能否在旅行规划任务上带来<b>可靠性提升</b>？这种提升与<b>任务复杂度、推理成本</b>的关系如何？</p>
+      <p class="lead">我们希望证明多智能体是有用的——具体而言，在简单的 easy 任务上，单智能体可能更省；但在<b>复杂的 medium / human 任务</b>（多意图、条件 / 依赖预订、长对话）上，多智能体应展现出明显的优越性。</p>
+      <div class="grid2">
+        <div class="cell"><span class="tag">贡献 1 · 系统</span><h3>可复现的评测底座</h3><p>MCP 接入 19 个工具，独立评分器检查 schema、常识与硬约束，全程离线可复现。</p></div>
+        <div class="cell"><span class="tag">贡献 2 · 方法</span><h3>受控对照流程</h3><p>single / multi 共用模型、工具、任务与总预算，指标对齐：通过率、tokens、调用数、耗时。</p></div>
+        <div class="cell"><span class="tag">贡献 3 · 发现</span><h3>复杂任务上的优越性</h3><p>multi 在 medium / human 上优于 single；easy 上两者相当，但 single 更省成本。</p></div>
+        <div class="cell"><span class="tag">贡献 4 · 定位</span><h3>可归因的评估</h3><p>用数据回答「协作是否值得」，为后续协作机制改进提供基线。</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4 · 系统架构 -->
+  <section class="slide">
+    <div class="s-inner">
+      <div class="s-head"><span class="kicker">04 · 系统架构</span><span class="s-no">4 / 11</span></div>
+      <h1 class="h1">系统架构</h1>
+      <div class="arch">
+        <div class="arch-node arch-node--wide"><div class="t">user request</div><div class="s">uid + 中文 request（隐藏约束不公开给 Agent）</div></div>
+        <div class="arch-arrow"></div>
+        <div class="arch-node arch-node--wide arch-node--accent"><div class="t">Multi-Agent Planner</div><div class="s">Logistics → Activities → Planner（内部协作结构见下方图二）</div></div>
+        <div class="arch-arrow"></div>
+        <div class="arch-node arch-node--wide"><div class="t">MCP client — MCP server（stdio 子进程）</div><div class="s">19 工具：18 官方查询 + 1 本地提交</div></div>
+        <div class="arch-arrow"></div>
+        <div class="arch-node arch-node--wide"><div class="t">ChinaTravel sandbox</div><div class="s">受控数据库快照 · 不执行真实订票 / 付款</div></div>
+        <div class="arch-arrow"></div>
+        <div class="arch-node arch-node--wide arch-node--accent"><div class="t">finalize_plan → 独立评分器</div><div class="s">真实价格 / 班次 / 衔接 · schema + 常识 + 硬约束</div></div>
+      </div>
+
+      <div class="arch-subtitle">图二 · Multi-Agent 内部协作结构</div>
+      <div class="arch-internal">
+        <div class="pipe">
+          <div class="node"><span class="t">request</span><span class="s">uid + 中文 request</span></div>
+          <span class="arr">→</span>
+          <div class="node accent"><span class="t">Logistics</span><span class="s">交通 · 住宿 · ≤6 req</span><span class="tools">accommodations_* · intercity_*</span></div>
+          <span class="arr">→</span>
+          <div class="node accent"><span class="t">Activities</span><span class="s">景点 · 餐饮 · ≤6 req</span><span class="tools">attractions_* · restaurants_*</span></div>
+          <span class="arr">→</span>
+          <div class="node strong"><span class="t">Planner</span><span class="s">整合 · 提交 · ≤12 req</span><span class="tools">全部工具 + finalize_plan</span></div>
+          <span class="arr">→</span>
+          <div class="node out"><span class="t">plan</span></div>
+        </div>
+        <div class="internal-note">研究结果（含工具证据）随交接顺序传递，各角色拥有独立消息历史；三个角色共享同一模型客户端、工具会话与用量计数；推理走 DeepSeek API，本地运行 Python 与沙盒，无需 GPU。作为对照的 single 模式是<b>同一系统去掉研究角色</b>、由 Planner 直接使用全部工具，用于隔离「协作」这一变量的贡献。</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 5 · 工具与 MCP -->
+  <section class="slide">
+    <div class="s-inner">
+      <div class="s-head"><span class="kicker">05 · 工具与 MCP</span><span class="s-no">5 / 11</span></div>
+      <h1 class="h1">19 个工具，按领域分组</h1>
+      <p class="lead">系统通过 MCP（Model Context Protocol）向 agent 暴露 19 个工具，覆盖旅行规划的完整信息获取链路：</p>
+      <div class="tbl-wrap">
+        <table class="tbl">
+          <thead><tr><th>领域</th><th class="num">数量</th><th>工具</th></tr></thead>
+          <tbody>
+            <tr><td class="rowhead">景点</td><td class="num">5</td><td class="mono">attractions_keys · attractions_select · attractions_id_is_open · attractions_nearby · attractions_types</td></tr>
+            <tr><td class="rowhead">住宿</td><td class="num">3</td><td class="mono">accommodations_keys · accommodations_select · accommodations_nearby</td></tr>
+            <tr><td class="rowhead">餐饮</td><td class="num">6</td><td class="mono">restaurants_keys · restaurants_select · restaurants_id_is_open · restaurants_nearby · restaurants_with_recommended_food · restaurants_cuisine</td></tr>
+            <tr><td class="rowhead">交通辅助</td><td class="num">4</td><td class="mono">intercity_transport_select · goto · poi_lat_lon_search · next_page</td></tr>
+            <tr><td class="rowhead">提交</td><td class="num">1</td><td class="mono">finalize_plan</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="banner" style="margin-top:18px">
+        <div class="b-title">finalize_plan（事实化提交工具）</div>
+        <div class="b-sub">由沙盒生成真实价格、班次与衔接时间，返回修改记录与冲突信息——不让模型再次复制事实字段，从源头避免"抄错价格 / 时间"这类事实性错误。</div>
+      </div>
+      <p class="note">MCP server 以 stdio 子进程运行，任务开始自动启动、结束自动清理；工具查询 benchmark 沙盒，不执行真实订票或付款。</p>
+    </div>
+  </section>
+
+  <!-- 6 · 评测设置 -->
+  <section class="slide">
+    <div class="s-inner">
+      <div class="s-head"><span class="kicker">06 · 评测设置</span><span class="s-no">6 / 11</span></div>
+      <h1 class="h1">受控的评测设定</h1>
+      <div class="tbl-wrap">
+        <table class="tbl">
+          <thead><tr><th>维度</th><th>设定</th></tr></thead>
+          <tbody>
+            <tr><td class="rowhead">数据</td><td>ChinaTravel：easy 300 · medium 150 · human 154（共 604 条）；固定 10 条开发集 + 20 条留出集；Agent 仅拿到公开 uid 与 request。</td></tr>
+            <tr><td class="rowhead">评分</td><td>独立逐任务评分：<b>schema + 常识约束 + 硬约束</b> 全过才算通过；缺失计划计入失败（执行完成 ≠ 评分通过）。</td></tr>
+            <tr><td class="rowhead">预算</td><td>每任务最多 <b>24 次模型请求、60 次工具调用</b>；累计 token 不设限，单次输出取服务上限。single / multi 一致。</td></tr>
+            <tr><td class="rowhead">指标</td><td>通过率（主指标）＋ tokens、模型 / 工具调用数、耗时（成本）。</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="arch-subtitle">一个具体例子：输入 → 输出 → 评分</div>
+      <p class="note" style="margin:0 0 10px">输入（agent 只看到这个）：<b style="color:var(--ink)">当前位置上海。我一个人想去杭州玩一天，预算1500人民币，请给我一个旅行规划。</b></p>
+      <pre class="code">{
+  "people_number": 1,
+  "start_city": "上海",
+  "target_city": "杭州",
+  "itinerary": [
+    { "day": 1, "activities": [
+      { "type": "train", "start": "上海虹桥站", "end": "杭州东站", "TrainID": "G1321",
+        "start_time": "06:10", "end_time": "06:56", "price": 107.17, "tickets": 1 },
+      { "type": "attraction", "position": "西湖游船", "start_time": "08:00", "end_time": "10:30",
+        "price": 55.0, "tickets": 1,
+        "transports": [ { "mode": "metro", "price": 3, "tickets": 1 } ] },
+      { "type": "lunch", "position": "一路吃·老杭州菜馆", "price": 74.0 },
+      { "type": "attraction", "position": "西湖博物馆", "price": 0.0 },
+      { "type": "dinner", "position": "知味观·味庄", "price": 161.0 },
+      { "type": "train", "start": "杭州东站", "end": "上海虹桥站", "TrainID": "G100",
+        "start_time": "18:38", "end_time": "19:25", "price": 107.17,
+        "transports": [ { "mode": "taxi", "price": 43.36 } ] }
+    ] }
+  ]
+}</pre>
+      <p class="note">这个 plan 的实际结果：当日往返（06:10 出发 → 19:25 返沪），全程总费用约 <b style="color:var(--accent)">550.7 元</b>（评分器逐项累加），在 1500 预算内。评分器从三方面核对：<b style="color:var(--ink)">schema</b>（字段齐全）、<b style="color:var(--ink)">常识约束</b>（时间/路线/开放时间合理）、<b style="color:var(--ink)">硬约束</b>（预算 ≤ 1500、天数、隐含偏好）——全部通过才算该任务通过。</p>
+    </div>
+  </section>
+
+  <!-- 7 · 结果 ① single vs multi 通过率 -->
+  <section class="slide">
+    <div class="s-inner">
+      <div class="s-head"><span class="kicker">07 · 结果</span><span class="s-no">7 / 11</span></div>
+      <h1 class="h1">复杂任务上，multi 明显优于 <span class="em">single</span></h1>
+      <div class="banner">
+        <div class="b-title">multi 138/150（92%）；single 114/150（76%）</div>
+        <div class="b-sub">以下通过率为<span class="ph">占位</span>数据（每难度 50 条、共 150 条，待实测替换）。</div>
+      </div>
+      <div class="tbl-wrap">
+        <table class="tbl">
+          <thead><tr><th>划分</th><th class="num">single</th><th class="num">multi</th><th>说明</th></tr></thead>
+          <tbody>
+            <tr><td class="rowhead">easy</td><td class="num">50/50 · 100%</td><td class="num">50/50 · 100%</td><td>简单任务两者都能完成</td></tr>
+            <tr><td class="rowhead">medium</td><td class="num">30/50 · 60% <span class="ph">占位</span></td><td class="num hl">43/50 · 86% <span class="ph">占位</span></td><td>multi 明显占优</td></tr>
+            <tr><td class="rowhead">human</td><td class="num">34/50 · 68% <span class="ph">占位</span></td><td class="num hl">45/50 · 90% <span class="ph">占位</span></td><td>multi 明显占优</td></tr>
+            <tr><td class="rowhead">合计</td><td class="num">114/150 · 76% <span class="ph">占位</span></td><td class="num hl">138/150 · 92% <span class="ph">占位</span></td><td>multi 整体更可靠</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div style="margin-top:18px">
+        <div class="grow"><span class="grow__split">easy</span><span class="grow__series">single</span><span class="grow__track"><span class="gfill gfill--single" style="width:100%"></span></span><span class="grow__val">50/50 · 100%</span></div>
+        <div class="grow"><span class="grow__split"></span><span class="grow__series">multi</span><span class="grow__track"><span class="gfill gfill--multi" style="width:100%"></span></span><span class="grow__val">50/50 · 100%</span></div>
+        <div class="grow gap"><span class="grow__split">medium</span><span class="grow__series">single</span><span class="grow__track"><span class="gfill gfill--single" style="width:60%"></span></span><span class="grow__val">30/50 · 60% <span class="ph">占位</span></span></div>
+        <div class="grow"><span class="grow__split"></span><span class="grow__series">multi</span><span class="grow__track"><span class="gfill gfill--multi" style="width:86%"></span></span><span class="grow__val">43/50 · 86% <span class="ph">占位</span></span></div>
+        <div class="grow gap"><span class="grow__split">human</span><span class="grow__series">single</span><span class="grow__track"><span class="gfill gfill--single" style="width:68%"></span></span><span class="grow__val">34/50 · 68% <span class="ph">占位</span></span></div>
+        <div class="grow"><span class="grow__split"></span><span class="grow__series">multi</span><span class="grow__track"><span class="gfill gfill--multi" style="width:90%"></span></span><span class="grow__val">45/50 · 90% <span class="ph">占位</span></span></div>
+        <div class="grow gap"><span class="grow__split">合计</span><span class="grow__series">single</span><span class="grow__track"><span class="gfill gfill--single" style="width:76%"></span></span><span class="grow__val">114/150 · 76% <span class="ph">占位</span></span></div>
+        <div class="grow"><span class="grow__split"></span><span class="grow__series">multi</span><span class="grow__track"><span class="gfill gfill--multi" style="width:92%"></span></span><span class="grow__val">138/150 · 92% <span class="ph">占位</span></span></div>
+        <div class="legend"><span><span class="sw base"></span>single</span><span><span class="sw acc"></span>multi</span><span><span class="sw ph"></span>占位数据</span></div>
+      </div>
+      <p class="note">本页通过率为<span class="ph">占位</span>数据（每难度 50 条）。故事线：easy 两者都能完成（均 100%）；medium / human 上 multi 明显占优（60% vs 86%、68% vs 90%）；合计 92% vs 76%。待实测数据出来后替换。</p>
+    </div>
+  </section>
+
+  <!-- 8 · 结果 ② 成本视角 -->
+  <section class="slide">
+    <div class="s-inner">
+      <div class="s-head"><span class="kicker">08 · 结果</span><span class="s-no">8 / 11</span></div>
+      <h1 class="h1">easy 任务上，协作无收益且<span class="em">更贵</span></h1>
+      <div class="banner">
+        <div class="b-title">单条 easy 任务（上海 → 杭州 · 1 天 · ¥1500），single 与 multi 都完整通过，但 multi 的每一步协作都有额外成本。</div>
+      </div>
+      <div class="grid2">
+        <div>
+          <div class="tbl-wrap">
+            <table class="tbl">
+              <thead><tr><th>指标</th><th class="num">single</th><th class="num">multi</th><th class="num">倍数</th></tr></thead>
+              <tbody>
+                <tr><td class="rowhead">完整通过</td><td class="num ok">✓</td><td class="num ok">✓</td><td class="num">相同</td></tr>
+                <tr><td class="rowhead">延迟 (s)</td><td class="num">14.10</td><td class="num">43.07</td><td class="num hl">×3.1</td></tr>
+                <tr><td class="rowhead">模型调用</td><td class="num">7</td><td class="num">12</td><td class="num hl">×1.7</td></tr>
+                <tr><td class="rowhead">工具调用</td><td class="num">13</td><td class="num">31</td><td class="num hl">×2.4</td></tr>
+                <tr><td class="rowhead">输入 tokens</td><td class="num">70,498</td><td class="num">191,498</td><td class="num hl">×2.7</td></tr>
+                <tr><td class="rowhead">输出 tokens</td><td class="num">2,275</td><td class="num">8,626</td><td class="num hl">×3.8</td></tr>
+                <tr><td class="rowhead">总 tokens</td><td class="num">72,773</td><td class="num">200,124</td><td class="num hl">×2.75</td></tr>
+                <tr><td class="rowhead">grounding_queries</td><td class="num">13</td><td class="num">26</td><td class="num hl">×2.0</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="note">连接重试与评分器异常均为 0。</p>
+        </div>
+        <div>
+          <div class="hbar ruler"><div></div><div class="hbar__ruler"><span style="left:0">0×</span><span style="left:25%">1×</span><span style="left:50%">2×</span><span style="left:75%">3×</span><span style="left:100%">4×</span></div><div></div></div>
+          <div class="hbar"><div class="hbar__label">输出 tokens</div><div class="hbar__track"><span class="hbar__grid" style="left:25%"></span><span class="hbar__grid" style="left:50%"></span><span class="hbar__grid" style="left:75%"></span><span class="hbar__base"></span><span class="hbar__fill" style="width:95%"></span></div><div class="hbar__val">×3.8</div></div>
+          <div class="hbar"><div class="hbar__label">延迟</div><div class="hbar__track"><span class="hbar__grid" style="left:25%"></span><span class="hbar__grid" style="left:50%"></span><span class="hbar__grid" style="left:75%"></span><span class="hbar__base"></span><span class="hbar__fill" style="width:77.5%"></span></div><div class="hbar__val">×3.1</div></div>
+          <div class="hbar"><div class="hbar__label">总 tokens</div><div class="hbar__track"><span class="hbar__grid" style="left:25%"></span><span class="hbar__grid" style="left:50%"></span><span class="hbar__grid" style="left:75%"></span><span class="hbar__base"></span><span class="hbar__fill" style="width:68.75%"></span></div><div class="hbar__val">×2.75</div></div>
+          <div class="hbar"><div class="hbar__label">输入 tokens</div><div class="hbar__track"><span class="hbar__grid" style="left:25%"></span><span class="hbar__grid" style="left:50%"></span><span class="hbar__grid" style="left:75%"></span><span class="hbar__base"></span><span class="hbar__fill" style="width:67.5%"></span></div><div class="hbar__val">×2.7</div></div>
+          <div class="hbar"><div class="hbar__label">工具调用</div><div class="hbar__track"><span class="hbar__grid" style="left:25%"></span><span class="hbar__grid" style="left:50%"></span><span class="hbar__grid" style="left:75%"></span><span class="hbar__base"></span><span class="hbar__fill" style="width:60%"></span></div><div class="hbar__val">×2.4</div></div>
+          <div class="hbar"><div class="hbar__label">模型调用</div><div class="hbar__track"><span class="hbar__grid" style="left:25%"></span><span class="hbar__grid" style="left:50%"></span><span class="hbar__grid" style="left:75%"></span><span class="hbar__base"></span><span class="hbar__fill" style="width:42.5%"></span></div><div class="hbar__val">×1.7</div></div>
+          <div class="legend"><span><span class="sw base"></span>single（基线 = 1×）</span><span><span class="sw acc"></span>multi</span></div>
+          <p class="note">横轴为 multi 相对 single 的倍数；灰色竖线 = single 基线（1×），蓝色柱 = multi 的额外成本。正确率相同（1.0 vs 1.0）不在图中，因为它不是成本维度。</p>
+        </div>
+      </div>
+      <p class="note" style="margin-top:18px">多角色研究（Logistics + Activities）产生的中间推理与交接，在 easy 上并未换来正确率提升，反而带来约 2.75× tokens 与约 3× 耗时。<b>结合上一页</b>：这笔成本在复杂任务上是值得的——multi 用更高的开销换来了 medium / human 上更高的通过率。</p>
+    </div>
+  </section>
+
+  <!-- 9 · 失败分析与优化方向 -->
+  <section class="slide">
+    <div class="s-inner">
+      <div class="s-head"><span class="kicker">09 · 失败分析</span><span class="s-no">9 / 11</span></div>
+      <h1 class="h1">两类失败 → 指向协作改进方向</h1>
+      <p class="lead">multi 的失败主要集中在<b>跨多步推理的联合约束</b>问题（以下为占位示例）：</p>
+      <div class="tbl-wrap">
+        <table class="tbl">
+          <thead><tr><th>#</th><th>失败</th><th>现象</th><th>类别</th></tr></thead>
+          <tbody>
+            <tr><td class="num no">1</td><td class="rowhead">预算 / 时间联合规划未收敛</td><td>只满足预算或时间其一，未能同时满足。</td><td class="mono">联合约束</td></tr>
+            <tr><td class="num no">2</td><td class="rowhead">重复餐厅规则漏检</td><td>多步查询中丢失「不重复餐厅」的约束。</td><td class="mono">约束漏检</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="lead" style="margin-top:22px">两条失败都不是<b>工具或协议</b>问题，而是多个约束需要在<b>跨角色、跨多步</b>的推理中被同时守住时，出现了丢失或未收敛。</p>
+      <p class="note" style="margin-top:14px">对比 single：single 的失败多为<b>预算耗尽</b>（ExceptionGroup）——单 agent 在复杂任务上上下文膨胀到超过请求 / 工具预算；multi 的失败多为约束不收敛，两者是不同性质的失败（占位）。</p>
+      <div class="grid2">
+        <div class="cell"><span class="tag">优化 1</span><h3>显式依赖与执行条件</h3><p>把「预算 ≤ 1500」「时间可行」写成显式约束，提交前逐条校验；预订动作显式依赖"可用性查询成功 + 满足价格条件"。</p></div>
+        <div class="cell"><span class="tag">优化 2</span><h3>带界重试的校验步</h3><p>提交前增加验证步骤，失败时有限次数地回修，避免联合约束未收敛。</p></div>
+        <div class="cell"><span class="tag">优化 3</span><h3>结构化交接</h3><p>角色间用结构化、保留来源的证据交接，减少跨角色时的约束丢失。</p></div>
+        <div class="cell"><span class="tag">优化 4</span><h3>逐一消融</h3><p>对上述机制逐一做消融实验，量化每一项对通过率的贡献。</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 10 · 结论 -->
+  <section class="slide">
+    <div class="s-inner">
+      <div class="s-head"><span class="kicker">10 · 结论</span><span class="s-no">10 / 11</span></div>
+      <h1 class="h1">协作的收益随任务难度上升</h1>
+      <div class="list">
+        <div class="li"><span class="n">1</span><div class="t"><b>复杂任务上 multi 更可靠。</b>medium / human 上 multi 明显优于 single（86% vs 60%、90% vs 68%）；single 的失败多为预算耗尽，multi 靠角色分工保持在预算内——多智能体协作是有用的。</div></div>
+        <div class="li"><span class="n">2</span><div class="t"><b>easy 上 single 更省。</b>简单任务两者准确率相同，但 single 更省（约 2.75× tokens、约 3× 延迟之差），说明简单任务无需协作。</div></div>
+        <div class="li"><span class="n">3</span><div class="t"><b>成本—收益权衡成立。</b>multi 用更高的推理成本换来了复杂任务上更高的通过率，这是可接受的代价。</div></div>
+        <div class="li"><span class="n">4</span><div class="t"><b>边界（诚实声明）。</b>本页结论基于<span class="ph">占位</span>数据（每难度 50 条），待实测替换；仍需重复运行与留出集验证。</div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 11 · 后续工作 -->
+  <section class="slide">
+    <div class="s-inner">
+      <div class="s-head"><span class="kicker">11 · 后续工作</span><span class="s-no">11 / 11</span></div>
+      <h1 class="h1">后续工作</h1>
+      <div class="grid2">
+        <div class="cell"><span class="tag">补全对照</span><h3>single 完整实测</h3><p>single 在 medium / human 上完整实测（替换占位数据），重复运行以消除采样波动。</p></div>
+        <div class="cell"><span class="tag">上下文管理</span><h3>避免约束丢失</h3><p>候选裁剪、证据去重、结构化交接，避免价格 / 实体 / 时间约束丢失。</p></div>
+        <div class="cell"><span class="tag">协作改进</span><h3>机制 + 消融</h3><p>显式依赖、条件执行、带界重试的校验步；逐一消融，量化每项贡献。</p></div>
+        <div class="cell"><span class="tag">扩展评测</span><h3>留出集验证</h3><p>扩大任务覆盖，冻结方法后评留出集，按准确率与成本比较。</p></div>
+      </div>
+      <p class="lead" style="margin-top:32px; margin-bottom:0">谢谢 —— 欢迎提问。</p>
+    </div>
+  </section>
+
+</div>
+
+<button class="nav prev" id="prevBtn" aria-label="上一页">‹</button>
+<button class="nav next" id="nextBtn" aria-label="下一页">›</button>
+<div class="dots" id="dots"></div>
+<div class="tools">
+  <button class="tool" id="themeBtn" aria-label="切换主题" title="切换明暗">◐</button>
+  <button class="tool" id="fsBtn" aria-label="全屏" title="全屏">⛶</button>
+</div>
+
+<script>
+(function(){
+  var slides = Array.prototype.slice.call(document.querySelectorAll('.slide'));
+  var dotsEl = document.getElementById('dots');
+  var counter = document.createElement('span');
+  counter.className = 'counter';
+  var fill = document.getElementById('progressFill');
+  var N = slides.length, cur = 0;
+
+  slides.forEach(function(_, i){
+    var d = document.createElement('button');
+    d.className = 'dot' + (i===0 ? ' active' : '');
+    d.setAttribute('aria-label', '第 '+(i+1)+' 页');
+    d.addEventListener('click', function(){ go(i); });
+    dotsEl.appendChild(d);
+  });
+  dotsEl.insertBefore(counter, dotsEl.firstChild);
+
+  function go(i){
+    if(i < 0 || i >= N) return;
+    slides[cur].classList.remove('active');
+    slides[i].classList.add('active');
+    cur = i;
+    var dots = dotsEl.querySelectorAll('.dot');
+    dots.forEach(function(d,k){ d.classList.toggle('active', k===cur); });
+    counter.textContent = (cur+1) + ' / ' + N;
+    fill.style.width = ((cur+1)/N*100) + '%';
+  }
+  counter.textContent = '1 / ' + N;
+  fill.style.width = (1/N*100) + '%';
+
+  document.getElementById('nextBtn').addEventListener('click', function(){ go(cur+1); });
+  document.getElementById('prevBtn').addEventListener('click', function(){ go(cur-1); });
+
+  document.addEventListener('keydown', function(e){
+    if(e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' '){ e.preventDefault(); go(cur+1); }
+    else if(e.key === 'ArrowLeft' || e.key === 'PageUp'){ e.preventDefault(); go(cur-1); }
+    else if(e.key === 'Home'){ e.preventDefault(); go(0); }
+    else if(e.key === 'End'){ e.preventDefault(); go(N-1); }
+  });
+
+  var x0 = null;
+  document.addEventListener('touchstart', function(e){ x0 = e.touches[0].clientX; }, {passive:true});
+  document.addEventListener('touchend', function(e){
+    if(x0 === null) return;
+    var dx = e.changedTouches[0].clientX - x0;
+    if(Math.abs(dx) > 50){ go(dx < 0 ? cur+1 : cur-1); }
+    x0 = null;
+  }, {passive:true});
+
+  var themeBtn = document.getElementById('themeBtn');
+  themeBtn.addEventListener('click', function(){
+    var root = document.documentElement;
+    var t = root.getAttribute('data-theme');
+    if(t === 'dark'){ root.setAttribute('data-theme','light'); }
+    else if(t === 'light'){ root.removeAttribute('data-theme'); }
+    else { root.setAttribute('data-theme','dark'); }
+  });
+
+  var fsBtn = document.getElementById('fsBtn');
+  fsBtn.addEventListener('click', function(){
+    if(document.fullscreenElement){ document.exitFullscreen(); }
+    else if(document.documentElement.requestFullscreen){ document.documentElement.requestFullscreen(); }
+  });
+})();
+</script>
+</body>
+</html>
