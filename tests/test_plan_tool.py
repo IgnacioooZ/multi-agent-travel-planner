@@ -32,14 +32,17 @@ def environment():
 
 
 def test_facts_are_compiled_without_mutating_draft():
-    plan=draft();original=deepcopy(plan)
+    plan=draft()
+    plan['itinerary'][0]['activities'].append({'type':'train','TrainID':'G3','start_time':'12:00','end_time':'13:00','price':0,'cost':0,'transport_mode':'taxi','transports':[]})
+    original=deepcopy(plan)
     result=PlanCompiler(environment()).compile(plan)
     assert result['success'] and plan==original
-    train,visit=result['plan']['itinerary'][0]['activities']
+    train,visit,back=result['plan']['itinerary'][0]['activities']
     assert (train['price'],train['tickets'],train['cost'],train['start'])==(100,2,200,'上海站')
     assert (visit['price'],visit['tickets'],visit['cost'],visit['start_time'])==(10,2,20,'10:00')
     route=visit['transports'][0]
     assert (route['price'],route['cost'],route['distance'],route['cars'])==(20,20,5,1)
+    assert (back['price'],back['tickets'],back['cost'],back['start'])==(100,2,200,'杭州站')
     assert result['changes'] and result['queries']
     assert PlanCompiler(environment()).compile(plan) == result
 
@@ -86,7 +89,8 @@ def test_finalizer_real_mcp_matches_direct():
         # A small real-data fixture with no dependence on an earlier paid run.
         plan={'people_number':1,'start_city':'上海','target_city':'杭州','itinerary':[{'day':1,'activities':[
             {'type':'train','TrainID':'G1321','start_time':'06:10','end_time':'06:56','transports':[]},
-            {'type':'attraction','position':'灵隐寺','start_time':'09:00','end_time':'10:00','transport_mode':'taxi','transports':[]}]}]}
+            {'type':'attraction','position':'灵隐寺','start_time':'09:00','end_time':'10:00','transport_mode':'taxi','transports':[]},
+            {'type':'train','TrainID':'G158','start_time':'16:13','end_time':'17:12','transport_mode':'taxi','transports':[]}]}]}
         async with connect_tools('direct') as tools:
             a=await tools.call('finalize_plan',{'plan':plan})
         async with connect_tools('mcp') as tools:

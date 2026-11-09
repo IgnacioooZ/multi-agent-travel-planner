@@ -29,10 +29,14 @@ PLANNER = COMMON + """\n你的职责是整合全部候选与工具证据，必�
    出租车 price 使用 goto 返回的单车 cost，补 cars，cost=price*cars；地铁补 tickets，cost=price*tickets；步行 price=cost=0。
 4. 先结束上一活动，再开始交通，再到达目的地，最后开始活动。不能把去景点的交通单独写成一个景点活动，不能重复景点。
 5. 所有实体、价格、开放时间和路线以工具证据为准。缺资料时先查工具，不凭空补值。
-6. 午餐安排在 11:00--14:00，晚餐安排在 17:00--20:00，并符合餐厅营业时间。
+   景点必须是 attractions_select 返回的实体；名字含「好吃街/美食/茶馆/火锅/串串/冰粉/小吃/面馆」等餐饮词通常是餐厅而非景点，先用 attractions_select 确认类型再填入景点字段。
+   住宿名通常含「酒店/宾馆/民宿/公寓/客栈」等词，属于 accommodations_select；不要把它们填成餐厅或景点。餐厅名含「店/馆/楼/庄/餐厅」等，用 restaurants_select 确认。
+6. 午餐安排在 11:00--14:00，晚餐安排在 17:00--20:00，并符合餐厅营业时间；每天每种餐次最多一次。
    如果用餐与返程冲突，应重选返程班次并重新查询交通，不能把晚餐提前到下午或伪造交通时刻。
+   到达目标城市的班次要选得足够早（尽量上午/午后到），让当天午餐/晚餐落在规定时段；若到站过晚导致某餐无法安排，应改选更早班次，或当天不安排该餐。
+   餐饮不是硬性必需：预算紧张时可省去部分或全部餐次（评分器不要求每天必须有餐），或选更便宜餐厅；优先免费景点。
 7. 最终必须调用 finalize_plan(plan=完整草案) 提交，成功结果由程序直接保存，不再手写最终 JSON。
-   你决定城市、实体、班次、游玩时间与交通方式；工具生成价格、数量费用和真实路线。失败时按 errors 和 alternatives 修改后再次调用。
+   你决定城市、实体、班次、游玩时间与交通方式；预算紧张时先比较各城际班次价格，选最便宜的可乘车次（含普速/慢车），不要默认高铁；工具生成价格、数量费用和真实路线。失败时按 errors 和 alternatives 修改后再次调用。
    所有住宿条目都代表一次实际付费过夜；不要用 price=0 的 accommodation 表示早晨离店或回酒店占位。
    住宿通常是过夜日最后一项，同一天只列一次。不要把入住、午休、回酒店和退房分别列成住宿；返程日不添加零费用酒店占位。
    每日从前一天结束的位置出发。返程班次必须晚于实际到站时间。缺少出发地具体 POI 时从始发车站开始，不编造“某城市区”接送路线。
@@ -73,7 +77,8 @@ async def solve(task, mode, model, tools, settings, usage, trace):
     # 单 Agent 直接做规划；多 Agent 的规划阶段另外接收前面的研究结果。
     context["output_schema"] = output_schema()
     planner_name = "planner" if mode == "multi" else "single"
-    planner_rounds = 12 if mode == "multi" else 24
+    # multi 的规划角色用完研究角色剩下的共享预算（至少 8 轮），避免研究角色提前结束时空转。
+    planner_rounds = 24 if mode == "single" else max(8, settings.max_model_calls - usage.model_calls)
     planner = Agent(planner_name, PLANNER, model, tools, settings, usage, trace, validate_output=plan_errors)
     result = await planner.run(context, rounds=planner_rounds)
     return parse_plan(result["content"])

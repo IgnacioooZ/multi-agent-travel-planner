@@ -37,7 +37,19 @@ class PlanCompiler:
             frame = getattr(self.env, component).select(city, 'name', lambda value: value == name)
             rows = frame.to_dict(orient='records')
             if len(rows) != 1:
-                raise ValueError(f'{city}/{component}: expected one exact entity {name}, found {len(rows)}')
+                hint = ''
+                for other in ('attractions', 'accommodations', 'restaurants'):
+                    if other == component:
+                        continue
+                    try:
+                        orows = getattr(self.env, other).select(city, 'name', lambda value: value == name).to_dict(orient='records')
+                    except Exception:
+                        continue
+                    if len(orows) == 1:
+                        kind_label = {'attractions': 'attraction', 'accommodations': 'accommodation', 'restaurants': 'restaurant'}[other]
+                        hint = f' (it is a {kind_label}, not a {component[:-1]})'
+                        break
+                raise ValueError(f'{city}/{component}: expected one exact entity {name}, found {len(rows)}{hint}; pick a real {component[:-1]} from {component}_select')
             self.cache[key] = rows[0]
         return deepcopy(self.cache[key])
 
@@ -118,10 +130,16 @@ class PlanCompiler:
                     if previous_position is not None and previous_position != destination:
                         mode = activity.get('transport_mode') or ('metro' if any(s.get('mode')=='metro' for s in old_route) else old_route[0]['mode'] if old_route else 'metro')
                         departure = max(previous_end, minutes(old_route[0]['start_time']) if old_route else previous_end)
-                        arguments = {'city':city,'start':previous_position,'end':destination,'start_time':clock(departure),'transport_type':mode}
-                        raw = self.env.transportation.goto(**arguments)
+                        raw = None
+                        for try_mode in dict.fromkeys([mode, 'taxi', 'walk']):
+                            arguments = {'city':city,'start':previous_position,'end':destination,'start_time':clock(departure),'transport_type':try_mode}
+                            raw = self.env.transportation.goto(**arguments)
+                            if isinstance(raw, list) and raw:
+                                if try_mode != mode:
+                                    changes.append({'path': path + '/transports', 'action': 'fallback_transport_mode', 'before': mode, 'after': try_mode})
+                                break
                         if not isinstance(raw, list) or not raw:
-                            raise ValueError(f'{path}: goto returned no route for {arguments}')
+                            raise ValueError(f'{path}: goto returned no route for {arguments}; these points may be close — use walk or taxi')
                         queries.append({'tool':'goto','arguments':arguments,'result':deepcopy(raw)})
                         for segment in raw:
                             item = deepcopy(segment)
@@ -165,6 +183,15 @@ class PlanCompiler:
                 'tool':q['tool'],'arguments':q['arguments'],
                 'result':{'success':True,'data':{'rows':[q['selected_record']]}}
             } for q in queries if 'selected_record' in q]))
+            # Round-trip completeness: the official scorer requires the first activity
+            # of the trip and the last activity of the trip to be intercity transport.
+            if plan['itinerary']:
+                head = plan['itinerary'][0].get('activities') or []
+                tail = plan['itinerary'][-1].get('activities') or []
+                if not head or head[0].get('type') not in ('train', 'airplane'):
+                    errors.append('day 1 must begin with an intercity train or airplane from start_city to target_city')
+                if not tail or tail[-1].get('type') not in ('train', 'airplane'):
+                    errors.append('the last activity must be an intercity train or airplane returning to start_city')
             # Only unambiguous explicit phrases; no private task labels or defaults.
             numerals = {'一':1,'二':2,'两':2,'三':3,'四':4,'五':5,'六':6,'七':7,'八':8,'九':9,'十':10}
             matches = re.findall(r'(?:玩|游玩|旅游|旅行|游览)([一二两三四五六七八九十\d]+)天', request)
@@ -175,7 +202,28 @@ class PlanCompiler:
             if len(set(budgets))==1:
                 total = sum(a['cost'] + sum(t['cost'] for t in a['transports']) for d in plan['itinerary'] for a in d['activities'])
                 if total > float(budgets[0]) + .01:
-                    errors.append(f'Public request budget {budgets[0]}; grounded total {total:.2f}. Select cheaper real services/places, do not change prices.')
+                    msg = f'Public request budget {budgets[0]}; grounded total {total:.2f}.'
+                    used_kinds = {a['type'] for d in plan['itinerary'] for a in d['activities'] if a['type'] in ('train', 'airplane')} or {'train', 'airplane'}
+                    hints = []
+                    for start, end in ((plan['start_city'], plan['target_city']), (plan['target_city'], plan['start_city'])):
+                        for kind in sorted(used_kinds):
+                            try:
+                                services = self.services(start, end, kind)
+                            except Exception:
+                                continue
+                            if not services:
+                                continue
+                            id_key = 'TrainID' if kind == 'train' else 'FlightID'
+                            cheapest = sorted(services, key=lambda r: float(r.get('Cost', 0.0)))[:4]
+                            desc = '; '.join(
+                                f"{r.get(id_key, '?')} {r.get('Cost')} ({r.get('BeginTime')}-{r.get('EndTime')}"
+                                f"{' 次日达' if r.get('EndTime', '') < r.get('BeginTime', '') else ''})"
+                                for r in cheapest)
+                            hints.append(f'{start}->{end} {kind}: {desc}')
+                    if hints:
+                        msg += ' Cheapest intercity: ' + ' | '.join(hints) + '.'
+                    msg += ' To fit budget: use the cheapest same-day arrival for the outgoing leg and the cheapest return (an overnight return is fine as the last activity); meals are optional and can be dropped; prefer free attractions. Select cheaper real services/places, do not change prices.'
+                    errors.append(msg)
         except (KeyError, TypeError, ValueError, AttributeError) as exc:
             errors.append(str(exc))
         return {'success':not errors,'plan':plan,'errors':list(dict.fromkeys(errors)),

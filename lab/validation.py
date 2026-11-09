@@ -40,13 +40,16 @@ def plan_errors(text, context=None, evidence=()):
             errors.append(f'{where}: invalid clock time {value}')
         return hour * 60 + minute
 
-    visited = set()
+    attractions_seen = {}
+    restaurants_seen = {}
     people = plan['people_number']
     if people < 1:
         errors.append('people_number must be positive')
+    last_day_num = plan['itinerary'][-1]['day']
     for day in plan['itinerary']:
         previous_end = None
         previous_position = None
+        meals_today = {}
         if not day['activities']:
             errors.append(f"day {day['day']}: activities must not be empty")
         for index, activity in enumerate(day['activities']):
@@ -58,12 +61,37 @@ def plan_errors(text, context=None, evidence=()):
                 errors.append(f'{where}: activity end must be after start')
             if previous_end is not None and start < previous_end:
                 errors.append(f'{where}: activity overlaps previous activity')
+            is_return_leg = (day['day'] == last_day_num) and (index == len(day['activities']) - 1)
+            if kind in ('train', 'airplane') and end < start and not is_return_leg:
+                ident = activity.get('FlightID') or activity.get('TrainID')
+                errors.append(f'{where}: the outgoing {kind} {ident} runs {activity["start_time"]}--{activity["end_time"]} and arrives the next day. A next-day arrival leaves no same-night to stay at the requested hotel and makes the return trip unplanned. Choose a same-day service arriving in the evening (e.g. a D/G train), not an overnight K/T train, for the outgoing leg; the return leg may be overnight as the last activity of the trip')
             # Public benchmark meal windows; no task-specific hidden constraints.
-            meal_windows = {'lunch': (11 * 60, 14 * 60), 'dinner': (17 * 60, 20 * 60)}
+            meal_windows = {'breakfast': (6 * 60, 9 * 60), 'lunch': (11 * 60, 14 * 60), 'dinner': (17 * 60, 20 * 60)}
+            if kind in ('breakfast', 'lunch', 'dinner'):
+                if kind in meals_today:
+                    errors.append(f'{where}: repeated meal type {kind} on the same day (already scheduled at {meals_today[kind]}); at most one {kind} per day')
+                else:
+                    meals_today[kind] = where
             if kind in meal_windows:
                 opens, closes = meal_windows[kind]
                 if end <= opens or start >= closes:
-                    errors.append(f'{where}: {kind} must overlap {opens // 60:02d}:00--{closes // 60:02d}:00; arrival alone is not a meal')
+                    msg = f'{where}: {kind} must overlap {opens // 60:02d}:00--{closes // 60:02d}:00 (it runs {activity["start_time"]}--{activity["end_time"]})'
+                    prev = day['activities'][index - 1] if index > 0 else None
+                    prev_arrive_late = False
+                    if start >= closes and prev is not None and prev.get('type') in ('train', 'airplane') and prev.get('end_time'):
+                        try:
+                            hh, mm = map(int, prev['end_time'].split(':'))
+                            prev_arrive_late = (hh * 60 + mm) >= closes - 60
+                        except (ValueError, AttributeError):
+                            prev_arrive_late = False
+                    if prev_arrive_late:
+                        ident = prev.get('FlightID') or prev.get('TrainID')
+                        msg += f'; the intercity {prev["type"]} {ident} arrives {prev["end_time"]}, too late for this {kind}. Choose an earlier {prev["type"]} arriving before ~{closes // 60 - 1:02d}:00, or drop this {kind} from this day'
+                    elif start >= closes:
+                        msg += f'; it starts after {closes // 60:02d}:00. Move it earlier or drop this {kind} from this day'
+                    else:
+                        msg += f'; it ends before {opens // 60:02d}:00. Move it into the window'
+                    errors.append(msg)
             if kind in ('train', 'airplane', 'attraction'):
                 money(activity, 'tickets', where)
             elif kind == 'accommodation':
@@ -72,11 +100,20 @@ def plan_errors(text, context=None, evidence=()):
                     errors.append(f'{where}: room_type must be sandbox numbed integer')
             else:
                 money({**activity, 'people': people}, 'people', where)
+            if kind == 'accommodation' and index != len(day['activities']) - 1 and end > 12 * 60:
+                errors.append(f'{where}: accommodation must be the last activity of the day (the overnight stay); schedule all meals and attractions before the hotel, and put the hotel last')
             if kind == 'attraction':
                 position = activity['position']
-                if position in visited:
-                    errors.append(f'{where}: repeated attraction {position}; incoming travel is not a separate attraction')
-                visited.add(position)
+                if position in attractions_seen:
+                    errors.append(f'{where}: repeated attraction {position} (already visited at {attractions_seen[position]}); incoming travel is not a separate attraction. Attractions used so far: {list(attractions_seen.keys())} — pick an unused one from attractions_select')
+                else:
+                    attractions_seen[position] = where
+            elif kind in ('lunch', 'dinner'):
+                position = activity['position']
+                if position in restaurants_seen:
+                    errors.append(f'{where}: repeated restaurant {position} (already used at {restaurants_seen[position]}); restaurants used so far: {list(restaurants_seen.keys())} — pick an unused one from restaurants_select')
+                else:
+                    restaurants_seen[position] = where
 
             destination = activity.get('start') if kind in ('train', 'airplane') else activity['position']
             segments = activity['transports']

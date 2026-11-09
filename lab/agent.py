@@ -58,7 +58,13 @@ class DeepSeekModel:
             if len(tools)==1 and tools[0]['function']['name']=='finalize_plan':
                 args['tool_choice'] = {'type':'function','function':{'name':'finalize_plan'}}
                 args['extra_body'] = {'thinking':{'type':'disabled'}}
-        result = await self.client.chat.completions.create(**args)
+        import asyncio
+        # The SDK's own timeout does not fire when a proxied connection half-opens
+        # (VPN drop), so a hung request can block forever. wait_for is the hard cap.
+        result = await asyncio.wait_for(
+            self.client.chat.completions.create(**args),
+            timeout=self.settings.timeout_seconds + 60.0,
+        )
         msg = result.choices[0].message
         return {
             "content": msg.content or "",
@@ -83,7 +89,8 @@ class DeepSeekModel:
     async def provider_output_limit(self):
         """Use the advertised service ceiling; omitting max_tokens uses a small default."""
         if not hasattr(self, 'provider_limits'):
-            models = await self.client.models.list()
+            import asyncio
+            models = await asyncio.wait_for(self.client.models.list(), timeout=self.settings.timeout_seconds + 60.0)
             model_id = {'deepseek-chat': 'deepseek-flash'}.get(self.settings.model, self.settings.model)
             match = next((m for m in models.data if m.id in (self.settings.model, model_id)), None)
             if match is None or not getattr(match, 'max_output_tokens', None):
@@ -126,7 +133,7 @@ class Agent:
             from openai import APIConnectionError
             try:
                 response = await self.model.complete(messages, active_tools, max_tokens)
-            except APIConnectionError as exc:
+            except (APIConnectionError, TimeoutError) as exc:
                 self.trace.log('model_error', agent=self.name, error_type=type(exc).__name__)
                 if self.usage.connection_retries >= 1:
                     raise
@@ -143,11 +150,11 @@ class Agent:
                     errors = ['Use finalize_plan(plan=...) to submit the itinerary; it builds and verifies factual fields.'] + errors
                 if errors:
                     self.trace.log("validation_failed", agent=self.name, errors=errors, correction=corrections)
-                    if corrections >= 2 or step == rounds - 1:
+                    if corrections >= 6 or step == rounds - 1:
                         from lab.validation import InvalidPlan
                         raise InvalidPlan("Output validation failed after bounded corrections")
                     corrections += 1
-                    messages.append({"role": "user", "content": "提交前检查未通过。请根据以下错误修正；必要时查询工具。重新输出完整紧凑 JSON，不要省略字段：" + json.dumps(errors, ensure_ascii=False)})
+                    messages.append({"role": "user", "content": "提交前检查未通过。请调用 finalize_plan(plan=完整草案) 提交，不要直接输出 JSON；finalize_plan 会按沙盒记录生成真实价格/路线并返回具体 errors 供你修正。当前问题：" + json.dumps(errors, ensure_ascii=False)})
                     continue
                 self.trace.log(
                     "handoff", agent=self.name,
@@ -200,7 +207,7 @@ class Agent:
         active_tools = [] if is_last_round or tool_budget_exhausted else available
         if is_last_round and not tool_budget_exhausted:
             active_tools = [t for t in available if t['function']['name']=='finalize_plan']
-        if self.validate_output is not None and step >= max(0,rounds-4) and not tool_budget_exhausted:
+        if self.validate_output is not None and step >= max(0,rounds-6) and not tool_budget_exhausted:
             finalizers = [t for t in available if t['function']['name']=='finalize_plan']
             if finalizers:
                 active_tools = finalizers

@@ -24,7 +24,8 @@ class ModelDouble:
             assert all(x["evidence"][0]["result"]["success"] for x in context["handoffs"])
             payload = {"people_number": 1, "start_city": "上海", "target_city": "杭州", "itinerary": [{"day": 1, "activities": [
                 {"type":"train","TrainID":"G1321","start_time":"06:10","end_time":"06:56","transports":[]},
-                {"type": "attraction", "position": "灵隐寺", "start_time": "09:00", "end_time": "10:00", "transport_mode":"taxi", "transports": []}]}]}
+                {"type": "attraction", "position": "灵隐寺", "start_time": "09:00", "end_time": "10:00", "transport_mode":"taxi", "transports": []},
+                {"type":"train","TrainID":"G158","start_time":"16:13","end_time":"17:12","transport_mode":"taxi","transports":[]}]}]}
             if tool_results:
                 calls = [{"id":"submit","type":"function","function":{"name":"finalize_plan","arguments":json.dumps({'plan':payload})}}]
         return {"content": json.dumps(payload), "tool_calls": calls, "input_tokens": 10, "output_tokens": 5, "served_model": "test-double", "finish_reason": "stop"}

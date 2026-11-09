@@ -107,12 +107,12 @@ def test_invalid_output_is_repaired_with_shared_budget(tmp_path):
 
 
 def test_invalid_or_truncated_output_never_becomes_handoff(tmp_path):
-    model = Model([('{', 'length')] * 3)
+    model = Model([('{', 'length')] * 7)
     trace = tmp_path/'trace.jsonl'
     usage = Usage()
     agent = Agent('planner', 'test', model, Tools(), Settings(), usage, Trace(trace), validate_output=plan_errors)
     with pytest.raises(InvalidPlan):
-        asyncio.run(agent.run({}, rounds=6))
+        asyncio.run(agent.run({}, rounds=10))
     events = [json.loads(line)['event'] for line in trace.read_text(encoding='utf-8').splitlines()]
-    assert usage.model_calls == 3
-    assert events.count('validation_failed') == 3 and 'handoff' not in events
+    assert usage.model_calls == 7
+    assert events.count('validation_failed') == 7 and 'handoff' not in events
